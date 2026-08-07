@@ -8,8 +8,8 @@ working service.
 2. **Learning foundation** — define the purpose, vocabulary, and decisions.
 3. **API contract** — document the endpoints, supported fields, headers, and
    error shape before behavior exists.
-4. **FastAPI application** — start the service and add a dependency-free
-   liveness endpoint.
+4. **FastAPI application (complete)** — start the service, validate basic
+   startup configuration, and add a dependency-free liveness endpoint.
 5. **Configuration** — validate environment settings without exposing secrets.
 6. **Authentication and correlation** — protect internal endpoints and trace
    every request.

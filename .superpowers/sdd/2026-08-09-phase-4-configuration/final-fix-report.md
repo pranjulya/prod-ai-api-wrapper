@@ -47,4 +47,4 @@ LOG_LEVEL=loud .venv/bin/pytest -q
 
 ## Commit
 
-Pending commit amendment.
+`3480aa7 fix: protect Redis config secrets`

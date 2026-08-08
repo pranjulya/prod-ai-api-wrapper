@@ -10,7 +10,7 @@ working service.
    error shape before behavior exists.
 4. **FastAPI application (complete)** — start the service, validate basic
    startup configuration, and add a dependency-free liveness endpoint.
-5. **Configuration** — validate environment settings without exposing secrets.
+5. **Configuration (complete)** — load environment settings, validate secrets and operational limits at startup, and keep secret values out of errors.
 6. **Authentication and correlation** — protect internal endpoints and trace
    every request.
 7. **Redis readiness** — connect shared storage and report whether the service

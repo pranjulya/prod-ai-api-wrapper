@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import ConfigError
 from app.main import create_app
 
 pytestmark = pytest.mark.filterwarnings(
@@ -27,6 +28,6 @@ def test_openapi_includes_the_liveness_route():
 def test_invalid_log_level_prevents_application_startup(monkeypatch):
     monkeypatch.setenv("LOG_LEVEL", "loud")
 
-    with pytest.raises(ValueError, match="LOG_LEVEL"):
+    with pytest.raises(ConfigError, match="LOG_LEVEL"):
         with TestClient(create_app()):
             pass

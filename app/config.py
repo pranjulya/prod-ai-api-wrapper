@@ -15,7 +15,7 @@ class Settings:
     openai_api_key: str = field(repr=False)
     openai_webhook_secret: str = field(repr=False)
     wrapper_api_key: str = field(repr=False)
-    redis_url: str
+    redis_url: str = field(repr=False)
     allowed_models: tuple[str, ...]
     default_model: str
     openai_timeout_seconds: int

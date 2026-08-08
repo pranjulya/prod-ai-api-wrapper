@@ -17,6 +17,12 @@ def test_default_model_must_be_allowed(monkeypatch):
         load_settings()
 
 
+def test_empty_default_model_uses_gpt_5_mini(monkeypatch):
+    monkeypatch.setenv("OPENAI_DEFAULT_MODEL", "")
+
+    assert load_settings().default_model == "gpt-5-mini"
+
+
 @pytest.mark.parametrize(
     "name", ["OPENAI_API_KEY", "OPENAI_WEBHOOK_SECRET", "WRAPPER_API_KEY"]
 )
@@ -69,9 +75,13 @@ def test_operational_settings_must_be_positive_integers(monkeypatch, name, value
         load_settings()
 
 
-def test_settings_repr_hides_secrets():
+def test_settings_repr_hides_secrets(monkeypatch):
+    redis_password = "redis-password-not-for-logs"
+    monkeypatch.setenv("REDIS_URL", f"redis://:{redis_password}@localhost:6379/0")
+
     settings = load_settings()
 
     assert "test-openai-key" not in repr(settings)
     assert "test-webhook-secret" not in repr(settings)
     assert "test-wrapper-key" not in repr(settings)
+    assert redis_password not in repr(settings)

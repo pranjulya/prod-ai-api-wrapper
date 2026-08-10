@@ -16,11 +16,13 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
         supplied_id = request.headers.get("X-Correlation-ID")
         correlation_id = supplied_id if supplied_id and CORRELATION_ID_PATTERN.fullmatch(supplied_id) else str(uuid.uuid4())
         request.state.correlation_id = correlation_id
-        response = (
-            await call_next(request)
-            if supplied_id is None or CORRELATION_ID_PATTERN.fullmatch(supplied_id)
-            else error_response(400, "invalid_correlation_id", "Invalid correlation ID.", correlation_id)
-        )
+        if supplied_id is not None and not CORRELATION_ID_PATTERN.fullmatch(supplied_id):
+            response = error_response(400, "invalid_correlation_id", "Invalid correlation ID.", correlation_id)
+        else:
+            try:
+                response = await call_next(request)
+            except Exception:
+                response = error_response(500, "internal_error", "Internal server error.", correlation_id)
         response.headers["X-Correlation-ID"] = correlation_id
         logger.info("request completed correlation_id=%s status_code=%s", correlation_id, response.status_code)
         return response

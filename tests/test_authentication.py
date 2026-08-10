@@ -60,6 +60,20 @@ def test_malformed_correlation_id_returns_generated_correlated_error():
     assert uuid.UUID(response.headers["X-Correlation-ID"]).version == 4
 
 
+def test_downstream_exception_returns_correlated_error():
+    app = create_app()
+
+    @app.get("/__review_boom")
+    async def review_boom():
+        raise RuntimeError("boom")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/__review_boom", headers={"Authorization": "Bearer test-wrapper-key"})
+
+    assert response.status_code == 500
+    assert response.headers["X-Correlation-ID"] == response.json()["error"]["correlation_id"]
+
+
 def test_webhook_path_is_exempt_from_wrapper_authentication():
     with TestClient(create_app()) as client:
         response = client.post("/webhooks/openai")

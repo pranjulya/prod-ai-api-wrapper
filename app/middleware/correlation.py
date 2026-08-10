@@ -21,7 +21,8 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
         else:
             try:
                 response = await call_next(request)
-            except Exception:
+            except Exception as exc:
+                logger.error("request failed correlation_id=%s exception_type=%s", correlation_id, type(exc).__name__)
                 response = error_response(500, "internal_error", "Internal server error.", correlation_id)
         response.headers["X-Correlation-ID"] = correlation_id
         logger.info("request completed correlation_id=%s status_code=%s", correlation_id, response.status_code)

@@ -30,6 +30,14 @@ def test_invalid_bearer_key_is_rejected(authorization):
     assert response.status_code == 401
 
 
+def test_non_ascii_bearer_key_is_rejected():
+    with TestClient(create_app(), raise_server_exceptions=False) as client:
+        response = client.get("/health/live", headers={"Authorization": b"Bearer caf\xc3\xa9"})
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "authentication_failed"
+
+
 def test_valid_client_correlation_id_is_returned():
     headers = {
         "Authorization": "Bearer test-wrapper-key",
@@ -74,6 +82,28 @@ def test_downstream_exception_returns_correlated_error():
     assert response.headers["X-Correlation-ID"] == response.json()["error"]["correlation_id"]
 
 
+def test_framework_errors_are_correlated_standard_errors():
+    app = create_app()
+
+    @app.get("/__review_validation/{value}")
+    async def review_validation(value: int):
+        return {"value": value}
+
+    with TestClient(app) as client:
+        responses = [
+            client.get("/health/missing", headers={"Authorization": "Bearer test-wrapper-key"}),
+            client.post("/health/live", headers={"Authorization": "Bearer test-wrapper-key"}),
+            client.get("/__review_validation/nope", headers={"Authorization": "Bearer test-wrapper-key"}),
+            client.post("/webhooks/openai"),
+        ]
+
+    assert [response.status_code for response in responses] == [404, 405, 422, 404]
+    for response in responses:
+        body = response.json()
+        assert set(body) == {"error"}
+        assert response.headers["X-Correlation-ID"] == body["error"]["correlation_id"]
+
+
 def test_webhook_path_is_exempt_from_wrapper_authentication():
     with TestClient(create_app()) as client:
         response = client.post("/webhooks/openai")
@@ -95,3 +125,19 @@ def test_correlation_log_excludes_credentials(caplog):
     assert re.search(r"client\.request-1.*200", caplog.text)
     assert "test-wrapper-key" not in caplog.text
     assert "Authorization" not in caplog.text
+
+
+def test_downstream_exception_log_excludes_exception_details(caplog):
+    caplog.set_level(logging.INFO)
+    app = create_app()
+
+    @app.get("/__review_secret_boom")
+    async def review_secret_boom():
+        raise RuntimeError("Bearer test-wrapper-key")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/__review_secret_boom", headers={"Authorization": "Bearer test-wrapper-key"})
+
+    assert response.status_code == 500
+    assert re.search(r"request failed correlation_id=.* exception_type=RuntimeError", caplog.text)
+    assert "test-wrapper-key" not in caplog.text

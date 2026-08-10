@@ -10,7 +10,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         if request.url.path == "/webhooks/openai":
             return await call_next(request)
         scheme, _, credential = request.headers.get("Authorization", "").partition(" ")
-        if scheme != "Bearer" or not credential or not hmac.compare_digest(
+        if scheme != "Bearer" or not credential or not credential.isascii() or not hmac.compare_digest(
             credential, request.app.state.settings.wrapper_api_key
         ):
             return error_response(

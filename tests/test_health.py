@@ -11,7 +11,7 @@ pytestmark = pytest.mark.filterwarnings(
 
 def test_liveness_reports_a_running_process():
     with TestClient(create_app()) as client:
-        response = client.get("/health/live")
+        response = client.get("/health/live", headers={"Authorization": "Bearer test-wrapper-key"})
 
     assert response.status_code == 200
     assert response.json() == {"status": "live"}
@@ -19,7 +19,7 @@ def test_liveness_reports_a_running_process():
 
 def test_openapi_includes_the_liveness_route():
     with TestClient(create_app()) as client:
-        response = client.get("/openapi.json")
+        response = client.get("/openapi.json", headers={"Authorization": "Bearer test-wrapper-key"})
 
     assert response.status_code == 200
     assert "/health/live" in response.json()["paths"]

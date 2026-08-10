@@ -15,7 +15,8 @@ working service.
    key and trace every response with a correlation ID.
 7. **Redis integration and readiness (complete)** — create and close shared
    Redis clients, check readiness with `PING`, and keep liveness independent.
-8. **Rate limiting** — enforce a shared fixed-window request limit.
+8. **Rate limiting (complete)** — enforce a shared atomic Redis fixed-window
+   request limit across service instances.
 9. **Synchronous responses** — call the OpenAI Responses API through the
    controlled contract.
 10. **Upstream failures** — translate timeouts and provider errors into stable

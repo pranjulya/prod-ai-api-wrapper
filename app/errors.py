@@ -12,7 +12,7 @@ def error_response(status_code: int, code: str, message: str, correlation_id: st
 
 
 async def http_exception_handler(request, exc: StarletteHTTPException) -> JSONResponse:
-    codes = {404: "not_found", 405: "method_not_allowed"}
+    codes = {404: "not_found", 405: "method_not_allowed", 503: "upstream_unavailable"}
     return error_response(
         exc.status_code, codes.get(exc.status_code, "http_error"), "Request failed.", request.state.correlation_id, exc.headers
     )

@@ -10,6 +10,7 @@ from app.config import load_settings
 from app.errors import http_exception_handler, validation_exception_handler
 from app.middleware.authentication import AuthenticationMiddleware
 from app.middleware.correlation import CorrelationMiddleware
+from app.middleware.rate_limiting import RateLimitingMiddleware
 
 
 @asynccontextmanager
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Production API Wrapper", lifespan=lifespan)
+    app.add_middleware(RateLimitingMiddleware)
     app.add_middleware(AuthenticationMiddleware)
     app.add_middleware(CorrelationMiddleware)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)

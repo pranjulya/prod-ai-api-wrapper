@@ -3,8 +3,9 @@ import re
 import uuid
 
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.errors import error_response
+from app.errors import error_response, http_exception_handler
 
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,8 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
         else:
             try:
                 response = await call_next(request)
+            except StarletteHTTPException as exc:
+                response = await http_exception_handler(request, exc)
             except Exception as exc:
                 logger.error("request failed correlation_id=%s exception_type=%s", correlation_id, type(exc).__name__)
                 response = error_response(500, "internal_error", "Internal server error.", correlation_id)

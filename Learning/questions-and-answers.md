@@ -38,3 +38,9 @@ creating another upstream request.
 They connect the client response, structured logs, retries, background job
 metadata, and errors, making a single request diagnosable without recording
 sensitive prompts or credentials.
+
+## Do correlation IDs authorize a request?
+
+No. Bearer authentication controls access by proving that the caller has the
+required internal key. A correlation ID only identifies a request for tracing;
+it does not authorize the caller or grant access.

@@ -13,8 +13,8 @@ working service.
 5. **Configuration (complete)** — load environment settings, validate secrets and operational limits at startup, and keep secret values out of errors.
 6. **Authentication and correlation (complete)** — require the internal bearer
    key and trace every response with a correlation ID.
-7. **Redis readiness** — connect shared storage and report whether the service
-   can accept work.
+7. **Redis integration and readiness (complete)** — create and close shared
+   Redis clients, check readiness with `PING`, and keep liveness independent.
 8. **Rate limiting** — enforce a shared fixed-window request limit.
 9. **Synchronous responses** — call the OpenAI Responses API through the
    controlled contract.

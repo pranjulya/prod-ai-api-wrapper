@@ -44,3 +44,9 @@ sensitive prompts or credentials.
 No. Bearer authentication controls access by proving that the caller has the
 required internal key. A correlation ID only identifies a request for tracing;
 it does not authorize the caller or grant access.
+
+## Why can readiness fail while liveness remains successful?
+
+Liveness only shows that the process and HTTP server are running. Readiness
+also checks whether Redis is reachable with `PING`, so a Redis outage can make
+the instance unable to serve work while it remains alive and able to recover.

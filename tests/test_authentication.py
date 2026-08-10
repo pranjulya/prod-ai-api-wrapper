@@ -98,6 +98,7 @@ def test_framework_errors_are_correlated_standard_errors():
         ]
 
     assert [response.status_code for response in responses] == [404, 405, 422, 404]
+    assert responses[1].headers["Allow"] == "GET"
     for response in responses:
         body = response.json()
         assert set(body) == {"error"}

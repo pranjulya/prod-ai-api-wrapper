@@ -17,8 +17,8 @@ working service.
    Redis clients, check readiness with `PING`, and keep liveness independent.
 8. **Rate limiting (complete)** — enforce a shared atomic Redis fixed-window
    request limit across service instances.
-9. **Synchronous responses** — call the OpenAI Responses API through the
-   controlled contract.
+9. **Synchronous responses (complete)** — forward a deliberately smaller
+   request contract through the official OpenAI SDK and normalize the result.
 10. **Upstream failures** — translate timeouts and provider errors into stable
     wrapper errors.
 11. **Idempotency** — make client retries safe from duplicate billable work.

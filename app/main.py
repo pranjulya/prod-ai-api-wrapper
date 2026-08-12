@@ -5,6 +5,8 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.health import router as health_router
+from app.api.responses import router as responses_router
+from app.clients.openai_client import create_openai_client
 from app.clients.redis_client import create_redis
 from app.config import load_settings
 from app.errors import http_exception_handler, validation_exception_handler
@@ -17,10 +19,14 @@ from app.middleware.rate_limiting import RateLimitingMiddleware
 async def lifespan(app: FastAPI):
     app.state.settings = load_settings()
     app.state.redis = create_redis(app.state.settings.redis_url)
+    app.state.openai = create_openai_client(app.state.settings)
     try:
         yield
     finally:
-        await app.state.redis.aclose()
+        try:
+            await app.state.openai.close()
+        finally:
+            await app.state.redis.aclose()
 
 
 def create_app() -> FastAPI:
@@ -31,6 +37,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.include_router(health_router, prefix="/health", tags=["health"])
+    app.include_router(responses_router, prefix="/v1", tags=["responses"])
     return app
 
 

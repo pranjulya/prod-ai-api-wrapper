@@ -74,3 +74,29 @@ it does not authorize the caller or grant access.
 Liveness only shows that the process and HTTP server are running. Readiness
 also checks whether Redis is reachable with `PING`, so a Redis outage can make
 the instance unable to serve work while it remains alive and able to recover.
+
+## Why isolate the OpenAI SDK behind a client adapter?
+
+The route should own the wrapper contract, not provider-specific client details.
+An adapter keeps SDK construction and calls in one place, makes fake clients
+easy to use in tests, and lets the provider integration change without
+spreading SDK types through the API layer.
+
+## Why reject unknown request fields?
+
+Unknown fields are rejected so callers cannot silently depend on behavior the
+wrapper has not documented or tested. This keeps the internal contract small
+and makes accidental typos fail at the boundary.
+
+## Why does the wrapper enforce a model allowlist?
+
+The allowlist prevents callers from selecting arbitrary models, which protects
+cost, capability, and policy boundaries. A request may use only a configured
+model, with the configured default used when the model is omitted.
+
+## Why normalize provider responses?
+
+The provider response contains more detail than internal callers need and may
+change as the SDK evolves. Returning a stable normalized shape keeps clients
+decoupled from provider response objects and gives the wrapper a clear place to
+control which output is exposed.

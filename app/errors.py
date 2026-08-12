@@ -3,6 +3,11 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
+class UnsupportedModelError(StarletteHTTPException):
+    def __init__(self):
+        super().__init__(status_code=400)
+
+
 def error_response(status_code: int, code: str, message: str, correlation_id: str, headers=None) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
@@ -13,6 +18,8 @@ def error_response(status_code: int, code: str, message: str, correlation_id: st
 
 async def http_exception_handler(request, exc: StarletteHTTPException) -> JSONResponse:
     codes = {404: "not_found", 405: "method_not_allowed", 429: "rate_limit_exceeded", 503: "upstream_unavailable"}
+    if isinstance(exc, UnsupportedModelError):
+        codes[400] = "unsupported_model"
     return error_response(
         exc.status_code, codes.get(exc.status_code, "http_error"), "Request failed.", request.state.correlation_id, exc.headers
     )

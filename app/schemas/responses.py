@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
 
 
 class ResponsesRequest(BaseModel):
@@ -9,7 +9,7 @@ class ResponsesRequest(BaseModel):
     input: Annotated[str, Field(min_length=1, max_length=50_000)]
     instructions: Annotated[str, Field(min_length=1, max_length=10_000)] | None = None
     model: Annotated[str, Field(min_length=1)] | None = None
-    max_output_tokens: Annotated[int, Field(ge=1, le=16_384)] | None = None
+    max_output_tokens: Annotated[StrictInt, Field(ge=1, le=16_384)] | None = None
     metadata: dict[StrictStr, StrictStr] | None = None
 
     @field_validator("input", "instructions", "model")

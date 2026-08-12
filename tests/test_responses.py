@@ -49,8 +49,7 @@ def test_response_uses_default_model_and_normalizes_provider_response(fake_opena
     assert response.status_code == 200
     body = response.json()
     assert body["id"].startswith("wrp_resp_")
-    assert body == {
-        **body,
+    assert {key: value for key, value in body.items() if key != "id"} == {
         "openai_response_id": "resp_123",
         "status": "completed",
         "model": "gpt-5-mini",
@@ -87,6 +86,9 @@ def test_response_forwards_only_supplied_approved_fields(fake_openai):
         {"input": "Hi", "instructions": "x" * 10_001},
         {"input": "Hi", "max_output_tokens": 0},
         {"input": "Hi", "max_output_tokens": 16_385},
+        {"input": "Hi", "max_output_tokens": True},
+        {"input": "Hi", "max_output_tokens": "12"},
+        {"input": "Hi", "max_output_tokens": 12.0},
         {"input": "Hi", "metadata": {"": "value"}},
         {"input": "Hi", "metadata": {"k" * 65: "value"}},
         {"input": "Hi", "metadata": {"key": "v" * 513}},
@@ -100,6 +102,16 @@ def test_response_rejects_invalid_payloads(fake_openai, payload):
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
     assert fake_openai.responses.calls == []
+
+
+def test_response_allows_missing_provider_usage(fake_openai):
+    fake_openai.responses.response.usage = None
+
+    with TestClient(create_app()) as client:
+        response = client.post("/v1/responses", headers=headers(), json={"input": "Hi"})
+
+    assert response.status_code == 200
+    assert response.json()["usage"] is None
 
 
 def test_response_rejects_unsupported_model(fake_openai):

@@ -8,6 +8,12 @@ class UnsupportedModelError(StarletteHTTPException):
         super().__init__(status_code=400)
 
 
+class IdempotencyConflictError(StarletteHTTPException):
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(status_code=409)
+
+
 def error_response(status_code: int, code: str, message: str, correlation_id: str, headers=None) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
@@ -26,6 +32,8 @@ async def http_exception_handler(request, exc: StarletteHTTPException) -> JSONRe
     }
     if isinstance(exc, UnsupportedModelError):
         codes[400] = "unsupported_model"
+    elif isinstance(exc, IdempotencyConflictError):
+        codes[409] = exc.code
     return error_response(
         exc.status_code, codes.get(exc.status_code, "http_error"), "Request failed.", request.state.correlation_id, exc.headers
     )

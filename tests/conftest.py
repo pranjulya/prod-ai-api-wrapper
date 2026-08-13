@@ -39,6 +39,18 @@ class FakeRedis:
             raise self.error
         return True
 
+    async def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.values:
+            return False
+        self.values[key] = value
+        return True
+
+    async def get(self, key):
+        return self.values.get(key)
+
+    async def delete(self, key):
+        self.values.pop(key, None)
+
     async def aclose(self):
         pass
 

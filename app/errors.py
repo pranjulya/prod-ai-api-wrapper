@@ -17,7 +17,13 @@ def error_response(status_code: int, code: str, message: str, correlation_id: st
 
 
 async def http_exception_handler(request, exc: StarletteHTTPException) -> JSONResponse:
-    codes = {404: "not_found", 405: "method_not_allowed", 429: "rate_limit_exceeded", 503: "upstream_unavailable"}
+    codes = {
+        404: "not_found",
+        405: "method_not_allowed",
+        429: "rate_limit_exceeded",
+        503: "upstream_unavailable",
+        504: "upstream_timeout",
+    }
     if isinstance(exc, UnsupportedModelError):
         codes[400] = "unsupported_model"
     return error_response(

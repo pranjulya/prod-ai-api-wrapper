@@ -1,9 +1,11 @@
 import uuid
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AuthenticationError, RateLimitError
 
 from app.errors import UnsupportedModelError
 from app.schemas.responses import ResponsesRequest, ResponsesResponse, Usage
+from app.services.retry import retry_async
 
 router = APIRouter()
 
@@ -19,7 +21,16 @@ async def create_response(payload: ResponsesRequest, request: Request) -> Respon
         value = getattr(payload, field)
         if value is not None:
             kwargs[field] = value
-    response = await request.app.state.openai.responses.create(**kwargs)
+    try:
+        response = await retry_async(lambda: request.app.state.openai.responses.create(**kwargs))
+    except APITimeoutError:
+        raise HTTPException(status_code=504) from None
+    except (APIConnectionError, AuthenticationError, RateLimitError):
+        raise HTTPException(status_code=503) from None
+    except APIStatusError as error:
+        if error.status_code >= 500:
+            raise HTTPException(status_code=503) from None
+        raise
     provider_usage = getattr(response, "usage", None)
     return ResponsesResponse(
         id=f"wrp_resp_{uuid.uuid4()}",

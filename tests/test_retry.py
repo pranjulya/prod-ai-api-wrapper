@@ -1,9 +1,15 @@
 import asyncio
 
+import httpx
 import pytest
 from openai import APIConnectionError, APIStatusError, APITimeoutError, AuthenticationError, RateLimitError
 
 from app.services.retry import retry_async
+
+
+def _response(status_code, headers=None):
+    request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+    return httpx.Response(status_code, headers=headers, request=request)
 
 
 def _error(cls, **kwargs):
@@ -12,7 +18,7 @@ def _error(cls, **kwargs):
     if cls is APITimeoutError:
         return cls(request=None)
     if cls is AuthenticationError:
-        return cls(message="no", response=kwargs.get("response"), body=None)
+        return cls(message="no", response=kwargs.get("response", _response(401)), body=None)
     return cls(message="no", response=kwargs.get("response"), body=None)
 
 
@@ -67,7 +73,7 @@ def test_non_retryable_error_is_raised_immediately():
 
 
 def test_retries_provider_5xx():
-    response = type("Response", (), {"status_code": 503, "headers": {}})()
+    response = _response(503)
     calls = 0
 
     async def operation():
@@ -81,7 +87,7 @@ def test_retries_provider_5xx():
 
 
 def test_honors_retry_after_header():
-    response = type("Response", (), {"status_code": 429, "headers": {"retry-after": "3"}})()
+    response = _response(429, {"retry-after": "3"})
     sleeps = []
     calls = 0
 

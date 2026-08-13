@@ -1,5 +1,9 @@
+import asyncio
+
 from fastapi.testclient import TestClient
 
+from app.clients.openai_client import create_openai_client
+from app.config import load_settings
 from app.main import create_app
 
 
@@ -12,6 +16,14 @@ class FakeOpenAI:
         self.closed = True
         if self.error:
             raise self.error
+
+
+def test_openai_sdk_retries_are_disabled():
+    client = create_openai_client(load_settings())
+    try:
+        assert client.max_retries == 0
+    finally:
+        asyncio.run(client.close())
 
 
 def test_openai_client_created_and_closed(monkeypatch):

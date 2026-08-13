@@ -19,8 +19,9 @@ working service.
    request limit across service instances.
 9. **Synchronous responses (complete)** — forward a deliberately smaller
    request contract through the official OpenAI SDK and normalize the result.
-10. **Upstream failures** — translate timeouts and provider errors into stable
-    wrapper errors.
+10. **Upstream failures (complete)** — classify transient and permanent
+    provider failures, apply bounded retries with jitter, and translate
+    timeouts and provider errors into stable wrapper errors.
 11. **Idempotency** — make client retries safe from duplicate billable work.
 12. **Background creation** — create durable jobs and return quickly.
 13. **Job status** — let clients poll job state safely.

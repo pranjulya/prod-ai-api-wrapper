@@ -100,3 +100,24 @@ The provider response contains more detail than internal callers need and may
 change as the SDK evolves. Returning a stable normalized shape keeps clients
 decoupled from provider response objects and gives the wrapper a clear place to
 control which output is exposed.
+
+## Which upstream failures should be retried?
+
+Transient failures such as connection errors, timeouts, and provider 5xx
+responses may succeed when attempted again. Permanent failures such as invalid
+credentials, malformed requests, and unsupported models should be translated
+and returned immediately; retrying them only adds latency and load.
+
+## Why are retries bounded and jittered?
+
+The wrapper makes only a small, fixed number of retry attempts with exponential
+backoff and jitter. A bound prevents one request from consuming resources
+indefinitely, while jitter spreads simultaneous retries so a provider incident
+does not create a synchronized retry storm.
+
+## Why translate upstream errors instead of returning them directly?
+
+The wrapper returns stable error codes and correlated responses while hiding
+provider details, credentials, and raw exception text. This keeps the internal
+contract predictable and prevents sensitive implementation details from
+leaking to callers.

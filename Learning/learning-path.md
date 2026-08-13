@@ -22,7 +22,7 @@ working service.
 10. **Upstream failures (complete)** — classify transient and permanent
     provider failures, apply bounded retries with jitter, and translate
     timeouts and provider errors into stable wrapper errors.
-11. **Idempotency** — make client retries safe from duplicate billable work.
+11. **Idempotency (complete)** — make client retries safe from duplicate billable work with Redis claims and replay.
 12. **Background creation** — create durable jobs and return quickly.
 13. **Job status** — let clients poll job state safely.
 14. **Webhooks** — verify OpenAI events and update job state exactly once.

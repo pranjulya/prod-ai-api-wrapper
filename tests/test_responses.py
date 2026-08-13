@@ -39,7 +39,7 @@ def fake_openai(monkeypatch):
 
 
 def headers(**extra):
-    return {"Authorization": "Bearer test-wrapper-key", **extra}
+    return {"Authorization": "Bearer test-wrapper-key", "Idempotency-Key": "test-key", **extra}
 
 
 def test_response_uses_default_model_and_normalizes_provider_response(fake_openai):

@@ -57,6 +57,18 @@ Networks and clients retry. An idempotency key lets the wrapper recognize a
 repeat of the same validated request and return the saved result instead of
 creating another upstream request.
 
+## How does Redis idempotency prevent duplicate requests?
+
+The wrapper hashes the validated request and atomically claims the key with
+Redis `SET NX EX` before calling OpenAI. Only the claimant may create billable
+work; later requests replay the completed response, reject a different payload
+with a conflict, or report that the original request is still running.
+
+## What happens when the provider call fails?
+
+The in-progress record is deleted after the final provider failure, allowing a
+later retry to claim the key safely instead of leaving a permanent lock.
+
 ## Why use correlation IDs?
 
 They connect the client response, structured logs, retries, background job

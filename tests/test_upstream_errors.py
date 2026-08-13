@@ -54,7 +54,7 @@ def fake_openai(monkeypatch):
 
 
 def headers():
-    return {"Authorization": "Bearer test-wrapper-key", "X-Correlation-ID": "phase-9-test"}
+    return {"Authorization": "Bearer test-wrapper-key", "X-Correlation-ID": "phase-9-test", "Idempotency-Key": "phase-9-key"}
 
 
 def response():

@@ -63,6 +63,18 @@ The wrapper job keeps provider identifiers internal and gives clients a stable
 status URL, expiry, correlation ID, and controlled state model independent of
 the complete OpenAI response format.
 
+## How should clients poll a background job?
+
+The status endpoint returns `202` while a job is pending or in progress and
+`200` for terminal states. Polling reads only Redis, so it does not create more
+OpenAI work or extend the job TTL.
+
+## Why do unknown and expired jobs return the same error?
+
+Both return `404 job_not_found`. This keeps the public contract simple and
+avoids revealing whether a particular internal job identifier previously
+existed. Once Redis removes an expired record, it is no longer available.
+
 ## Why require an idempotency key for billable work?
 
 Networks and clients retry. An idempotency key lets the wrapper recognize a

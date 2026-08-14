@@ -1,18 +1,28 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from openai import APIConnectionError, APIStatusError, APITimeoutError, AuthenticationError, RateLimitError
 from redis.exceptions import RedisError
 
-from app.errors import IdempotencyConflictError, UnsupportedModelError
+from app.errors import IdempotencyConflictError, JobNotFoundError, UnsupportedModelError
 from app.schemas.responses import ResponsesRequest, ResponsesResponse, Usage
 from app.schemas.jobs import BackgroundJobResponse, JobRecord, JobStatus
-from app.services.jobs import create_job, delete_job, update_job
+from app.services.jobs import create_job, delete_job, get_job, update_job
 from app.services.retry import retry_async
 from app.services.idempotency import ClaimStatus, claim, delete, redis_key, request_hash, store
 
 router = APIRouter()
+
+
+def _valid_job_id(job_id: str) -> bool:
+    if not job_id.startswith("job_"):
+        return False
+    try:
+        value = uuid.UUID(job_id[4:])
+    except ValueError:
+        return False
+    return value.version == 4 and str(value) == job_id[4:].lower()
 
 
 def _request_kwargs(payload: ResponsesRequest, model: str) -> dict:
@@ -171,3 +181,17 @@ async def create_background_response(
         await _release_background(request.app.state.redis, key)
         raise HTTPException(status_code=503) from None
     return public
+
+
+@router.get("/responses/{job_id}", response_model=BackgroundJobResponse)
+async def get_background_response(job_id: str, request: Request, response: Response) -> BackgroundJobResponse:
+    if not _valid_job_id(job_id):
+        raise JobNotFoundError()
+    try:
+        record = await get_job(request.app.state.redis, job_id)
+    except RedisError:
+        raise HTTPException(status_code=503) from None
+    if record is None or record.status is JobStatus.EXPIRED:
+        raise JobNotFoundError()
+    response.status_code = 202 if record.status in {JobStatus.PENDING, JobStatus.IN_PROGRESS} else 200
+    return BackgroundJobResponse.model_validate(record, from_attributes=True)

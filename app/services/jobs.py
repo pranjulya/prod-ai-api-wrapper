@@ -16,5 +16,10 @@ async def update_job(redis, record: JobRecord) -> None:
     await redis.set(job_key(record.id), record.model_dump_json(), ex=remaining)
 
 
+async def get_job(redis, job_id: str) -> JobRecord | None:
+    value = await redis.get(job_key(job_id))
+    return None if value is None else JobRecord.model_validate_json(value)
+
+
 async def delete_job(redis, job_id: str) -> None:
     await redis.delete(job_key(job_id))

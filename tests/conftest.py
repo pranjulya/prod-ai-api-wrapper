@@ -14,11 +14,38 @@ class FakePipeline:
     def expire(self, key, seconds, nx=False):
         self.commands.append(("expire", key, seconds, nx))
 
+    def set(self, key, value, nx=False, ex=None):
+        self.commands.append(("set", key, value, nx, ex))
+
+    def delete(self, key):
+        self.commands.append(("delete", key))
+
     async def execute(self):
+        results = []
         with self.redis_client.lock:
-            key = self.commands[0][1]
-            self.redis_client.values[key] = self.redis_client.values.get(key, 0) + 1
-            return [self.redis_client.values[key], True]
+            for command in self.commands:
+                if command[0] == "incr":
+                    key = command[1]
+                    value = self.redis_client.values.get(key, 0) + 1
+                    self.redis_client.values[key] = value
+                    results.append(value)
+                elif command[0] == "expire":
+                    _, key, seconds, _ = command
+                    self.redis_client.expirations[key] = seconds
+                    results.append(True)
+                elif command[0] == "set":
+                    _, key, value, nx, seconds = command
+                    if nx and key in self.redis_client.values:
+                        results.append(False)
+                        continue
+                    self.redis_client.values[key] = value
+                    if seconds is not None:
+                        self.redis_client.expirations[key] = seconds
+                    results.append(True)
+                elif command[0] == "delete":
+                    self.redis_client.values.pop(command[1], None)
+                    results.append(True)
+        return results
 
 
 class FakeRedis:
@@ -27,6 +54,7 @@ class FakeRedis:
         self.lock = threading.Lock()
         self.pipeline_calls = 0
         self.values = {}
+        self.expirations = {}
 
     def pipeline(self, transaction=True):
         if self.error:
@@ -40,10 +68,13 @@ class FakeRedis:
         return True
 
     async def set(self, key, value, nx=False, ex=None):
-        if nx and key in self.values:
-            return False
-        self.values[key] = value
-        return True
+        with self.lock:
+            if nx and key in self.values:
+                return False
+            self.values[key] = value
+            if ex is not None:
+                self.expirations[key] = ex
+            return True
 
     async def get(self, key):
         return self.values.get(key)

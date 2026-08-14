@@ -8,7 +8,7 @@ from redis.exceptions import RedisError
 from app.errors import IdempotencyConflictError, JobNotFoundError, UnsupportedModelError
 from app.schemas.responses import ResponsesRequest, ResponsesResponse
 from app.schemas.jobs import BackgroundJobResponse, JobRecord, JobStatus
-from app.services.jobs import create_job, delete_job, get_job, update_job
+from app.services.jobs import create_job, delete_job, get_job, update_job_with_response_id
 from app.services.retry import retry_async
 from app.services.idempotency import ClaimStatus, claim, delete, redis_key, request_hash, store
 from app.services.responses import normalize_response
@@ -160,7 +160,7 @@ async def create_background_response(
     record = record.model_copy(update={"status": JobStatus.IN_PROGRESS, "openai_response_id": response.id})
     public = BackgroundJobResponse.model_validate(record, from_attributes=True)
     try:
-        await update_job(request.app.state.redis, record)
+        await update_job_with_response_id(request.app.state.redis, record)
         await store(
             request.app.state.redis,
             key=key,

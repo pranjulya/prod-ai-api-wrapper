@@ -6,11 +6,12 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError, Authenti
 from redis.exceptions import RedisError
 
 from app.errors import IdempotencyConflictError, JobNotFoundError, UnsupportedModelError
-from app.schemas.responses import ResponsesRequest, ResponsesResponse, Usage
+from app.schemas.responses import ResponsesRequest, ResponsesResponse
 from app.schemas.jobs import BackgroundJobResponse, JobRecord, JobStatus
 from app.services.jobs import create_job, delete_job, get_job, update_job
 from app.services.retry import retry_async
 from app.services.idempotency import ClaimStatus, claim, delete, redis_key, request_hash, store
+from app.services.responses import normalize_response
 
 router = APIRouter()
 
@@ -84,22 +85,7 @@ async def create_response(payload: ResponsesRequest, request: Request, idempoten
             raise HTTPException(status_code=503) from None
         await delete(request.app.state.redis, key)
         raise
-    provider_usage = getattr(response, "usage", None)
-    normalized = ResponsesResponse(
-        id=f"wrp_resp_{uuid.uuid4()}",
-        openai_response_id=getattr(response, "id", None),
-        status=getattr(response, "status", None),
-        model=getattr(response, "model", None),
-        output_text=getattr(response, "output_text", None),
-        usage=None
-        if provider_usage is None
-        else Usage(
-            input_tokens=getattr(provider_usage, "input_tokens", None),
-            output_tokens=getattr(provider_usage, "output_tokens", None),
-            total_tokens=getattr(provider_usage, "total_tokens", None),
-        ),
-        correlation_id=request.state.correlation_id,
-    )
+    normalized = normalize_response(response, request.state.correlation_id)
     try:
         await store(request.app.state.redis, key=key, request_hash_value=fingerprint, response=normalized, ttl_seconds=request.app.state.settings.idempotency_ttl_seconds)
     except RedisError:
@@ -108,7 +94,12 @@ async def create_response(payload: ResponsesRequest, request: Request, idempoten
     return normalized
 
 
-@router.post("/responses/background", response_model=BackgroundJobResponse, status_code=202)
+@router.post(
+    "/responses/background",
+    response_model=BackgroundJobResponse,
+    response_model_exclude_none=True,
+    status_code=202,
+)
 async def create_background_response(
     payload: ResponsesRequest, request: Request, idempotency_key: str | None = Header(default=None)
 ) -> BackgroundJobResponse:
@@ -183,7 +174,11 @@ async def create_background_response(
     return public
 
 
-@router.get("/responses/{job_id}", response_model=BackgroundJobResponse)
+@router.get(
+    "/responses/{job_id}",
+    response_model=BackgroundJobResponse,
+    response_model_exclude_none=True,
+)
 async def get_background_response(job_id: str, request: Request, response: Response) -> BackgroundJobResponse:
     if not _valid_job_id(job_id):
         raise JobNotFoundError()

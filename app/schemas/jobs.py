@@ -3,6 +3,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel
 
+from app.schemas.responses import Usage
+
 
 class JobStatus(StrEnum):
     PENDING = "pending"
@@ -22,6 +24,9 @@ class JobRecord(BaseModel):
     expires_at: datetime
     status_url: str
     correlation_id: str
+    model: str | None = None
+    output_text: str | None = None
+    usage: Usage | None = None
 
 
 class BackgroundJobResponse(BaseModel):
@@ -31,3 +36,6 @@ class BackgroundJobResponse(BaseModel):
     expires_at: datetime
     status_url: str
     correlation_id: str
+    model: str | None = None
+    output_text: str | None = None
+    usage: Usage | None = None

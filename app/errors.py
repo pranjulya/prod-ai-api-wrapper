@@ -14,6 +14,11 @@ class IdempotencyConflictError(StarletteHTTPException):
         super().__init__(status_code=409)
 
 
+class JobNotFoundError(StarletteHTTPException):
+    def __init__(self):
+        super().__init__(status_code=404)
+
+
 def error_response(status_code: int, code: str, message: str, correlation_id: str, headers=None) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
@@ -34,6 +39,8 @@ async def http_exception_handler(request, exc: StarletteHTTPException) -> JSONRe
         codes[400] = "unsupported_model"
     elif isinstance(exc, IdempotencyConflictError):
         codes[409] = exc.code
+    elif isinstance(exc, JobNotFoundError):
+        codes[404] = "job_not_found"
     return error_response(
         exc.status_code, codes.get(exc.status_code, "http_error"), "Request failed.", request.state.correlation_id, exc.headers
     )

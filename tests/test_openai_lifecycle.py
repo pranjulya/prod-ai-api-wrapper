@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 
 from fastapi.testclient import TestClient
 
@@ -19,9 +20,11 @@ class FakeOpenAI:
 
 
 def test_openai_sdk_retries_are_disabled():
-    client = create_openai_client(load_settings())
+    settings = replace(load_settings(), openai_webhook_secret="settings-webhook-secret")
+    client = create_openai_client(settings)
     try:
         assert client.max_retries == 0
+        assert client.webhook_secret == "settings-webhook-secret"
     finally:
         asyncio.run(client.close())
 

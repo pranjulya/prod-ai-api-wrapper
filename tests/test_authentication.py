@@ -97,7 +97,7 @@ def test_framework_errors_are_correlated_standard_errors():
             client.post("/webhooks/openai"),
         ]
 
-    assert [response.status_code for response in responses] == [404, 405, 422, 404]
+    assert [response.status_code for response in responses] == [404, 405, 422, 401]
     assert responses[1].headers["Allow"] == "GET"
     for response in responses:
         body = response.json()
@@ -109,7 +109,8 @@ def test_webhook_path_is_exempt_from_wrapper_authentication():
     with TestClient(create_app()) as client:
         response = client.post("/webhooks/openai")
 
-    assert response.status_code == 404
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_webhook_signature"
     assert response.headers["X-Correlation-ID"]
 
 

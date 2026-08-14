@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 from app.schemas.jobs import JobRecord, JobStatus
-from app.services.jobs import create_job, delete_job, job_key, update_job
+from app.services.jobs import create_job, delete_job, get_job, job_key, update_job
 
 
 class FakeRedis:
@@ -16,6 +16,9 @@ class FakeRedis:
 
     async def delete(self, key):
         self.values.pop(key, None)
+
+    async def get(self, key):
+        return self.values.get(key)
 
 
 def test_job_create_update_delete():
@@ -42,3 +45,23 @@ async def _exercise_job_storage():
     assert '"openai_response_id":"resp_123"' in redis.values[job_key(record.id)]
     await delete_job(redis, record.id)
     assert job_key(record.id) not in redis.values
+
+
+def test_get_job_returns_record_without_writing():
+    asyncio.run(_get_job_without_writing())
+
+
+async def _get_job_without_writing():
+    redis = FakeRedis()
+    now = datetime.now(timezone.utc)
+    record = JobRecord(
+        id="job_123",
+        status=JobStatus.COMPLETED,
+        created_at=now,
+        expires_at=now + timedelta(seconds=60),
+        status_url="/v1/responses/job_123",
+        correlation_id="corr",
+    )
+    redis.values[job_key(record.id)] = record.model_dump_json()
+    assert await get_job(redis, record.id) == record
+    assert await get_job(redis, "job_missing") is None

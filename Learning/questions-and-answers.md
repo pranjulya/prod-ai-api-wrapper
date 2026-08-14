@@ -51,6 +51,18 @@ Redis gives the internal application a durable job record to poll. Verified
 webhooks allow the wrapper to update that record promptly when OpenAI reports
 a terminal state.
 
+## Why does background creation not need a separate worker?
+
+OpenAI performs the model work when the wrapper sends `background=True`. The
+wrapper only persists a durable Redis job, returns `202 Accepted`, and later
+uses polling and verified webhooks to observe terminal state.
+
+## Why store a wrapper job instead of returning only the OpenAI response ID?
+
+The wrapper job keeps provider identifiers internal and gives clients a stable
+status URL, expiry, correlation ID, and controlled state model independent of
+the complete OpenAI response format.
+
 ## Why require an idempotency key for billable work?
 
 Networks and clients retry. An idempotency key lets the wrapper recognize a

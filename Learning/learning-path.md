@@ -23,7 +23,7 @@ working service.
     provider failures, apply bounded retries with jitter, and translate
     timeouts and provider errors into stable wrapper errors.
 11. **Idempotency (complete)** — make client retries safe from duplicate billable work with Redis claims and replay.
-12. **Background creation** — create durable jobs and return quickly.
+12. **Background creation (complete)** — create durable Redis jobs and return `202` while OpenAI processes them.
 13. **Job status** — let clients poll job state safely.
 14. **Webhooks** — verify OpenAI events and update job state exactly once.
 15. **Observability** — add structured logs and correlation-aware events.

@@ -8,6 +8,12 @@
 
 **Tech Stack:** Python 3.12, FastAPI, OpenAI Python SDK 3.x, redis-py asyncio, Pydantic, pytest, HTTPX.
 
+**Review hardening amendment:** Limit raw webhook bodies to 1 MiB while
+streaming, store a random owner token in each processing claim, and use
+compare-by-token Redis scripts for release/finalization. Finalization must also
+atomically preserve an already-terminal job so the first terminal event wins
+under real interleaving.
+
 ## Global Constraints
 
 - Work only on `feature/phase-13-openai-webhooks`; do not implement Phase 14.

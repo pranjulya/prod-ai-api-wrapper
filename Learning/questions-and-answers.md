@@ -61,7 +61,9 @@ shared state.
 
 OpenAI can deliver the same event more than once. A shared atomic Redis claim
 makes duplicate delivery harmless across workers and API instances, while a
-short processing state allows recovery after an interrupted attempt.
+short processing state allows recovery after an interrupted attempt. Each claim
+contains a random owner token, and atomic compare-by-token updates prevent an
+expired worker from releasing or finalizing a newer worker's claim.
 
 ## Why return an error instead of acknowledging temporary webhook failures?
 

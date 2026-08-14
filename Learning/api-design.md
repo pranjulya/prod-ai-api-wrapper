@@ -101,7 +101,7 @@ A completed job includes the normalized result fields:
 
 ### Health and webhook responses
 
-`GET /health/live` returns `200` with `{"status":"live"}` without contacting Redis or OpenAI. `GET /health/ready` returns `200` with `{"status":"ready"}` only when Redis is reachable; otherwise it returns `503` with the standard error shape. Webhook verification uses the raw body and OpenAI delivery headers before parsing or state access. A verified and durably processed webhook returns `200` with `{"received":true}`. Missing or invalid signatures return `401 invalid_webhook_signature`; temporary Redis or OpenAI retrieval failures return retryable `503` or `504` errors.
+`GET /health/live` returns `200` with `{"status":"live"}` without contacting Redis or OpenAI. `GET /health/ready` returns `200` with `{"status":"ready"}` only when Redis is reachable; otherwise it returns `503` with the standard error shape. Webhook verification uses the raw body and OpenAI delivery headers before parsing or state access. Webhook bodies are limited to 1 MiB. A verified and durably processed webhook returns `200` with `{"received":true}`. Missing or invalid signatures return `401 invalid_webhook_signature`; oversized bodies return `413 request_too_large`; temporary Redis or OpenAI retrieval failures return retryable `503` or `504` errors.
 
 ## Errors
 
@@ -123,6 +123,7 @@ Every error uses this shape:
 | `401` | `authentication_failed` or `invalid_webhook_signature` | Authentication or signature verification failed. |
 | `404` | `job_not_found` | The requested job does not exist or has expired. |
 | `409` | `idempotency_key_reused` | An idempotency key was reused with a different request. |
+| `413` | `request_too_large` | The webhook body exceeds 1 MiB. |
 | `422` | `validation_error` | A field fails type, presence, or size validation. |
 | `429` | `rate_limit_exceeded` | The wrapper rate limit was exceeded. |
 | `500` | `internal_error` | An unexpected wrapper error occurred. |

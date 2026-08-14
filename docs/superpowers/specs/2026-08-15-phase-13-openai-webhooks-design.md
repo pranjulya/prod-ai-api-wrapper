@@ -58,10 +58,11 @@ remains the only provider retry layer.
 
 ### Webhook route
 
-Add a small router dedicated to `POST /webhooks/openai`. The handler reads the
-raw body once and calls `request.app.state.openai.webhooks.unwrap(raw_body,
-request.headers)`. No JSON parsing or Redis access occurs before `unwrap`
-succeeds.
+Add a small router dedicated to `POST /webhooks/openai`. The handler streams at
+most 1 MiB into memory, then calls
+`request.app.state.openai.webhooks.unwrap(raw_body, request.headers)`. Larger
+bodies return `413 request_too_large`. No JSON parsing or Redis access occurs
+before `unwrap` succeeds.
 
 The route translates `InvalidWebhookSignatureError` into the stable webhook
 authentication error. Other processing is delegated to a webhook service.
@@ -78,14 +79,16 @@ openai-response-job:<sha256(openai_response_id)>
 
 The event key has two values:
 
-- `processing`: temporary ownership of the event.
+- `processing:<random-owner-token>`: temporary ownership of the event.
 - `processed`: durable deduplication marker.
 
-Claim an event with `SET key processing NX EX <processing_ttl>`. Derive the
-processing TTL as `max(60, 3 * OPENAI_TIMEOUT_SECONDS + 10)` so it covers the
-maximum three provider attempts allowed by the existing two-retry policy. A
-failed or unknown-job attempt deletes its claim. A process crash leaves a
-temporary claim that expires and permits a later delivery to retry.
+Claim an event with `SET key processing:<random-owner-token> NX EX
+<processing_ttl>`. Derive the processing TTL as `max(60, 3 *
+OPENAI_TIMEOUT_SECONDS + 10)` so it covers the maximum three provider attempts
+allowed by the existing two-retry policy. Release and finalization use atomic
+compare-by-token Redis scripts, so an expired owner cannot delete or complete a
+new owner's claim. A process crash leaves a temporary claim that expires and
+permits a later delivery to retry.
 
 After success, replace the value with `processed` and retain it for at least
 259,200 seconds, matching OpenAI's documented delivery retry window of up to 72
@@ -135,6 +138,7 @@ cannot overwrite the stored terminal state or completed result.
 | Situation | Response | State effect |
 | --- | --- | --- |
 | Missing or invalid signature | `401 invalid_webhook_signature` | No Redis or response retrieval |
+| Body larger than 1 MiB | `413 request_too_large` | No signature verification, Redis, or response retrieval |
 | Unsupported verified event | `200` | No job mutation |
 | Previously processed event | `200` | No job mutation |
 | Concurrent processing | `503 upstream_unavailable` | Existing owner continues |
@@ -151,8 +155,10 @@ prompt, model output, Redis values, or raw upstream exceptions.
 ## Atomicity and concurrency
 
 Redis is the coordination authority across API instances. Event claiming uses
-`SET NX`, and finalization uses a transactional pipeline that updates the job and
-marks the event processed together. Background creation similarly stores the
+`SET NX`; token-aware Lua scripts release or finalize only the current owner's
+claim. Finalization atomically checks that the stored job is still non-terminal,
+updates it, and marks the event processed. This makes terminal states absorbing
+even when different terminal events race. Background creation stores the
 provider-to-job mapping with the updated job in one transaction.
 
 The design deliberately avoids acknowledging an event before durable completion.
@@ -168,6 +174,8 @@ or create billable requests.
 - The raw body and headers reach `webhooks.unwrap` unchanged.
 - Missing and invalid signatures return safe correlated `401` errors before any
   Redis or OpenAI response operation.
+- Fixed-length and chunked bodies larger than 1 MiB return safe correlated `413`
+  errors without signature verification or state access.
 - Each supported terminal event produces the expected state.
 - A completed event retrieves once, stores normalized output, and exposes it via
   authenticated polling.
@@ -175,6 +183,7 @@ or create billable requests.
 - Sequential and concurrent duplicate deliveries do not repeat retrieval or
   overwrite state.
 - Later out-of-order terminal events cannot replace an existing terminal state.
+- An expired owner cannot release or finalize a replacement owner's claim.
 - Unknown response IDs and the metadata race return retryable `503`; a later
   delivery succeeds after the mapping appears.
 - Redis errors, OpenAI timeouts, and transient OpenAI failures leave the event

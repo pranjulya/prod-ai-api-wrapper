@@ -9,6 +9,7 @@ from redis.exceptions import ConnectionError
 from app.main import create_app
 from app.schemas.jobs import JobRecord, JobStatus
 from app.services.jobs import job_key, response_job_key
+from app.api.webhooks import MAX_WEBHOOK_BODY_BYTES
 from app.services.webhooks import event_key
 from conftest import FakeRedis
 
@@ -131,6 +132,27 @@ def test_missing_signature_is_rejected_by_the_real_sdk():
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "invalid_webhook_signature"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"x" * (MAX_WEBHOOK_BODY_BYTES + 1),
+        iter((b"x" * (MAX_WEBHOOK_BODY_BYTES // 2), b"y" * (MAX_WEBHOOK_BODY_BYTES // 2 + 1))),
+    ],
+)
+def test_oversized_webhook_body_is_rejected_before_verification(monkeypatch, content):
+    redis = FakeRedis()
+    openai = FakeOpenAI(event=event(event_type="batch.completed"))
+    install(monkeypatch, redis, openai)
+
+    with TestClient(create_app()) as client:
+        response = client.post("/webhooks/openai", content=content, headers=SIGNED_HEADERS)
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "request_too_large"
+    assert openai.webhooks.calls == []
+    assert redis.values == {}
 
 
 def test_verified_unsupported_event_is_acknowledged_without_state_change(monkeypatch):

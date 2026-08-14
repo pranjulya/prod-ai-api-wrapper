@@ -1,3 +1,4 @@
+import json
 import threading
 
 import pytest
@@ -81,6 +82,47 @@ class FakeRedis:
 
     async def delete(self, key):
         self.values.pop(key, None)
+
+    async def eval(self, script, numkeys, *args):
+        keys = args[:numkeys]
+        values = args[numkeys:]
+        with self.lock:
+            if script.startswith("-- release-webhook-event"):
+                key = keys[0]
+                if self.values.get(key) != values[0]:
+                    return 0
+                self.values.pop(key, None)
+                return 1
+            if script.startswith("-- mark-webhook-event-processed"):
+                key = keys[0]
+                if self.values.get(key) != values[0]:
+                    return 0
+                self.values[key] = values[1]
+                self.expirations[key] = int(values[2])
+                return 1
+            if script.startswith("-- finalize-webhook-event"):
+                event_key, stored_job_key = keys
+                owner, serialized_job, job_ttl, processed, processed_ttl = values
+                if self.values.get(event_key) != owner:
+                    return 0
+                current = self.values.get(stored_job_key)
+                if current is None:
+                    return 0
+                if isinstance(current, bytes):
+                    current = current.decode()
+                if json.loads(current)["status"] not in {
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    "incomplete",
+                    "expired",
+                }:
+                    self.values[stored_job_key] = serialized_job
+                    self.expirations[stored_job_key] = int(job_ttl)
+                self.values[event_key] = processed
+                self.expirations[event_key] = int(processed_ttl)
+                return 1
+            raise AssertionError("unexpected Redis script")
 
     async def aclose(self):
         pass

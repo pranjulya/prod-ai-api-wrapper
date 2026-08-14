@@ -18,4 +18,3 @@ async def update_job(redis, record: JobRecord) -> None:
 
 async def delete_job(redis, job_id: str) -> None:
     await redis.delete(job_key(job_id))
-

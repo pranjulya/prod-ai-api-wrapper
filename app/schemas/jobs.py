@@ -31,4 +31,3 @@ class BackgroundJobResponse(BaseModel):
     expires_at: datetime
     status_url: str
     correlation_id: str
-

@@ -83,9 +83,25 @@ The wrapper sends only these fields to OpenAI. It never accepts client-supplied 
 
 `GET /v1/responses/{job_id}` returns `202 Accepted` for `pending` or `in_progress`, `200 OK` for `completed`, `404 Not Found` after expiry or for an unknown job, and `200 OK` with a terminal `failed`, `cancelled`, or `incomplete` status for other completed work.
 
+A completed job includes the normalized result fields:
+
+```json
+{
+  "id": "job_01H...",
+  "status": "completed",
+  "created_at": "2026-08-07T10:00:00Z",
+  "expires_at": "2026-08-08T10:00:00Z",
+  "status_url": "/v1/responses/job_01H...",
+  "correlation_id": "request-123",
+  "model": "gpt-5-mini",
+  "output_text": "The completed background result.",
+  "usage": {"input_tokens": 42, "output_tokens": 18, "total_tokens": 60}
+}
+```
+
 ### Health and webhook responses
 
-`GET /health/live` returns `200` with `{"status":"live"}` without contacting Redis or OpenAI. `GET /health/ready` returns `200` with `{"status":"ready"}` only when Redis is reachable; otherwise it returns `503` with the standard error shape. A verified webhook returns `200` with `{"received":true}`. Invalid webhook signatures return `401`.
+`GET /health/live` returns `200` with `{"status":"live"}` without contacting Redis or OpenAI. `GET /health/ready` returns `200` with `{"status":"ready"}` only when Redis is reachable; otherwise it returns `503` with the standard error shape. Webhook verification uses the raw body and OpenAI delivery headers before parsing or state access. A verified and durably processed webhook returns `200` with `{"received":true}`. Missing or invalid signatures return `401 invalid_webhook_signature`; temporary Redis or OpenAI retrieval failures return retryable `503` or `504` errors.
 
 ## Errors
 

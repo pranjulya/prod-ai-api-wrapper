@@ -25,7 +25,8 @@ working service.
 11. **Idempotency (complete)** — make client retries safe from duplicate billable work with Redis claims and replay.
 12. **Background creation (complete)** — create durable Redis jobs and return `202` while OpenAI processes them.
 13. **Job status (complete)** — let clients poll Redis-backed job state safely without calling OpenAI.
-14. **Webhooks** — verify OpenAI events and update job state exactly once.
+14. **Webhooks (complete)** — verify OpenAI events, deduplicate delivery in
+    Redis, and update terminal jobs exactly once.
 15. **Observability** — add structured logs and correlation-aware events.
 16. **Testing** — automate unit, integration, and contract checks.
 17. **Local operations** — complete Docker Compose and smoke-test workflows.

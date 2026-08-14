@@ -51,6 +51,26 @@ Redis gives the internal application a durable job record to poll. Verified
 webhooks allow the wrapper to update that record promptly when OpenAI reports
 a terminal state.
 
+## Why verify a webhook before parsing or updating Redis?
+
+The signature covers the raw body and delivery headers. Verifying first prevents
+a forged request from selecting a job, triggering OpenAI retrieval, or changing
+shared state.
+
+## Why keep processed webhook event IDs in Redis?
+
+OpenAI can deliver the same event more than once. A shared atomic Redis claim
+makes duplicate delivery harmless across workers and API instances, while a
+short processing state allows recovery after an interrupted attempt. Each claim
+contains a random owner token, and atomic compare-by-token updates prevent an
+expired worker from releasing or finalizing a newer worker's claim.
+
+## Why return an error instead of acknowledging temporary webhook failures?
+
+A successful response tells OpenAI that delivery is complete. Returning a safe
+non-2xx response when Redis or retrieval is unavailable preserves OpenAI's retry
+mechanism and prevents accepted events from being lost.
+
 ## Why does background creation not need a separate worker?
 
 OpenAI performs the model work when the wrapper sends `background=True`. The

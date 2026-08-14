@@ -6,6 +6,7 @@ from redis.exceptions import ConnectionError
 
 from app.main import create_app
 from app.schemas.jobs import JobRecord, JobStatus
+from app.schemas.responses import Usage
 from app.services.jobs import job_key
 from conftest import FakeRedis
 
@@ -52,6 +53,9 @@ def test_active_job_returns_202(monkeypatch, status):
     assert response.status_code == 202
     assert response.json()["status"] == status
     assert "openai_response_id" not in response.json()
+    assert "model" not in response.json()
+    assert "output_text" not in response.json()
+    assert "usage" not in response.json()
     assert response.headers["X-Correlation-ID"] == "poll-correlation"
     assert openai.calls == 0
 
@@ -65,6 +69,31 @@ def test_terminal_job_returns_200(monkeypatch, status):
         response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
     assert response.status_code == 200
     assert response.json()["status"] == status
+
+
+def test_completed_job_returns_normalized_result(monkeypatch):
+    redis = FakeRedis()
+    completed = record(JobStatus.COMPLETED).model_copy(
+        update={
+            "model": "gpt-5-mini",
+            "output_text": "finished",
+            "usage": Usage(input_tokens=4, output_tokens=2, total_tokens=6),
+        }
+    )
+    redis.values[job_key(JOB_ID)] = completed.model_dump_json()
+    monkeypatch.setattr("app.main.create_redis", lambda url: redis)
+
+    with TestClient(create_app()) as client:
+        response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
+
+    assert response.status_code == 200
+    assert response.json()["model"] == "gpt-5-mini"
+    assert response.json()["output_text"] == "finished"
+    assert response.json()["usage"] == {
+        "input_tokens": 4,
+        "output_tokens": 2,
+        "total_tokens": 6,
+    }
 
 
 @pytest.mark.parametrize("job_id", ["not-a-job", JOB_ID])

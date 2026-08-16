@@ -125,7 +125,7 @@ is known:
 | `background_job_created` | Job, reverse mapping, and idempotency result are durable | job_id, operation `background_create`; request ID if available |
 | `webhook_verified` | SDK signature verification and parsing succeed | webhook_type |
 | `webhook_rejected` | Required signature headers are absent, verification fails, or body exceeds 1 MiB | status code and category `webhook_signature` or `request_too_large` |
-| `job_completed` | Redis confirms a completed event won terminal finalization | job_id, operation `retrieve`; request ID if available |
+| `job_completed` | Redis confirms a completed event won terminal finalization | original job correlation ID, job_id, operation `retrieve`; request ID if available |
 
 `openai_request_failed` records the attempt that failed. An initial attempt has
 `retry_count=0`; the two allowed retry attempts have `1` and `2`. Permanent
@@ -143,6 +143,8 @@ The webhook finalization result must distinguish "job updated" from "job was
 already terminal." This prevents a racing completed event from emitting
 `job_completed` when a failed, cancelled, incomplete, or expired event actually
 won. The Redis mutation remains atomic and terminal states remain absorbing.
+`job_completed` explicitly overrides the webhook delivery context with the
+correlation ID stored on the background job, linking creation and completion.
 
 ## Error categories
 

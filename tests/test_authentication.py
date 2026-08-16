@@ -1,6 +1,5 @@
-import logging
-import re
 import uuid
+import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,6 +10,10 @@ from app.main import create_app
 pytestmark = pytest.mark.filterwarnings(
     "ignore:Using `httpx` with `starlette.testclient` is deprecated"
 )
+
+
+def event(records, name):
+    return [record for record in records if record["event"] == name]
 
 
 def test_missing_bearer_key_returns_correlated_error():
@@ -114,8 +117,7 @@ def test_webhook_path_is_exempt_from_wrapper_authentication():
     assert response.headers["X-Correlation-ID"]
 
 
-def test_correlation_log_excludes_credentials(caplog):
-    caplog.set_level(logging.INFO)
+def test_request_completion_event_excludes_credentials(captured_events):
     headers = {
         "Authorization": "Bearer test-wrapper-key",
         "X-Correlation-ID": "client.request-1",
@@ -123,14 +125,14 @@ def test_correlation_log_excludes_credentials(caplog):
     with TestClient(create_app()) as client:
         response = client.get("/health/live", headers=headers)
 
+    completed = event(captured_events, "request_completed")[-1]
     assert response.status_code == 200
-    assert re.search(r"client\.request-1.*200", caplog.text)
-    assert "test-wrapper-key" not in caplog.text
-    assert "Authorization" not in caplog.text
+    assert completed["correlation_id"] == "client.request-1"
+    assert completed["status_code"] == 200
+    assert "test-wrapper-key" not in json.dumps(captured_events)
 
 
-def test_downstream_exception_log_excludes_exception_details(caplog):
-    caplog.set_level(logging.INFO)
+def test_downstream_exception_event_excludes_exception_details(captured_events):
     app = create_app()
 
     @app.get("/__review_secret_boom")
@@ -140,6 +142,22 @@ def test_downstream_exception_log_excludes_exception_details(caplog):
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get("/__review_secret_boom", headers={"Authorization": "Bearer test-wrapper-key"})
 
+    failed = event(captured_events, "request_failed")[-1]
     assert response.status_code == 500
-    assert re.search(r"request failed correlation_id=.* exception_type=RuntimeError", caplog.text)
-    assert "test-wrapper-key" not in caplog.text
+    assert failed["status_code"] == 500
+    assert failed["error_category"] == "internal"
+    assert "test-wrapper-key" not in json.dumps(captured_events)
+
+
+def test_authentication_failure_is_structured_and_redacted(captured_events):
+    with TestClient(create_app()) as client:
+        response = client.get(
+            "/health/live",
+            headers={"Authorization": "Bearer secret-auth-value"},
+        )
+
+    rejected = event(captured_events, "authentication_failed")[-1]
+    assert response.status_code == 401
+    assert rejected["status_code"] == 401
+    assert rejected["error_category"] == "authentication"
+    assert "secret-auth-value" not in json.dumps(captured_events)

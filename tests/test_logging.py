@@ -3,6 +3,9 @@ import json
 import logging
 import sys
 
+from fastapi.testclient import TestClient
+
+from app.main import create_app
 from app.logging import (
     JsonFormatter,
     bind_correlation_id,
@@ -14,6 +17,10 @@ from app.logging import (
 
 def decode(record: logging.LogRecord) -> dict:
     return json.loads(JsonFormatter().format(record))
+
+
+def event(records, name):
+    return [record for record in records if record["event"] == name]
 
 
 def test_application_event_is_json_and_whitelists_fields():
@@ -145,3 +152,39 @@ def test_malformed_record_falls_back_to_valid_json():
     payload = decode(record)
     assert payload["event"] == "logging_error"
     assert set(payload) == {"timestamp", "level", "event", "logger"}
+
+
+def test_request_lifecycle_is_correlated_and_uses_route_template(captured_events):
+    with TestClient(create_app()) as client:
+        response = client.get(
+            "/health/live",
+            headers={
+                "Authorization": "Bearer test-wrapper-key",
+                "X-Correlation-ID": "trace-14",
+            },
+        )
+
+    started = event(captured_events, "request_started")[-1]
+    completed = event(captured_events, "request_completed")[-1]
+    assert response.status_code == 200
+    assert started["correlation_id"] == completed["correlation_id"] == "trace-14"
+    assert completed["method"] == "GET"
+    assert completed["route"] == "/health/live"
+    assert completed["status_code"] == 200
+    assert completed["duration_ms"] >= 0
+
+
+def test_invalid_correlation_completion_is_categorized(captured_events):
+    with TestClient(create_app()) as client:
+        response = client.get(
+            "/health/live",
+            headers={
+                "Authorization": "Bearer test-wrapper-key",
+                "X-Correlation-ID": "invalid value",
+            },
+        )
+
+    completed = event(captured_events, "request_completed")[-1]
+    assert response.status_code == 400
+    assert completed["status_code"] == 400
+    assert completed["error_category"] == "validation"

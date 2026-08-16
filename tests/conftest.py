@@ -1,7 +1,10 @@
 import json
+import logging
 import threading
 
 import pytest
+
+from app.logging import JsonFormatter
 
 
 class FakePipeline:
@@ -153,3 +156,21 @@ def valid_environment(monkeypatch):
 @pytest.fixture(autouse=True)
 def fake_redis(monkeypatch):
     monkeypatch.setattr("app.main.create_redis", lambda url: FakeRedis())
+
+
+@pytest.fixture
+def captured_events():
+    records = []
+
+    class Capture(logging.Handler):
+        def emit(self, record):
+            records.append(json.loads(JsonFormatter().format(record)))
+
+    logger = logging.getLogger("app")
+    handler = Capture()
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    try:
+        yield records
+    finally:
+        logger.removeHandler(handler)

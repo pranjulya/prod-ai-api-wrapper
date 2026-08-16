@@ -107,21 +107,6 @@ def test_third_party_record_drops_original_message_and_exception():
     assert "secret-in-message" not in json.dumps(payload)
 
 
-def test_first_party_record_keeps_rendered_safe_message():
-    record = logging.LogRecord(
-        "app.middleware.correlation",
-        logging.ERROR,
-        __file__,
-        1,
-        "request failed correlation_id=%s exception_type=%s",
-        ("corr-1", "RuntimeError"),
-        None,
-    )
-    payload = decode(record)
-    assert payload["event"] == "app_log"
-    assert payload["message"] == "request failed correlation_id=corr-1 exception_type=RuntimeError"
-
-
 def test_configuration_is_idempotent_and_applies_level():
     configure_logging("DEBUG")
     configure_logging("DEBUG")

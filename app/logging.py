@@ -68,8 +68,6 @@ class JsonFormatter(logging.Formatter):
                 )
             elif record.name in {"uvicorn", "uvicorn.error"}:
                 payload.update(event="uvicorn_server", message=record.getMessage())
-            elif record.name == "app.middleware.correlation":
-                payload.update(event="app_log", message=record.getMessage())
             elif hasattr(record, "event"):
                 for field in ALLOWED_FIELDS:
                     value = _safe(getattr(record, field, None))

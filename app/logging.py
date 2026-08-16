@@ -28,6 +28,13 @@ _correlation_id = contextvars.ContextVar("correlation_id", default=None)
 _MISSING = object()
 
 
+def _is_production_stream_handler(handler: logging.Handler) -> bool:
+    return isinstance(handler, logging.StreamHandler) and getattr(handler, "stream", None) in {
+        sys.stdout,
+        sys.stderr,
+    }
+
+
 def _safe(value):
     if isinstance(value, Enum):
         value = value.value
@@ -118,7 +125,8 @@ def configure_logging(level: str) -> None:
     root = logging.getLogger()
     root.setLevel(numeric_level)
     for handler in root.handlers:
-        handler.setFormatter(formatter)
+        if getattr(handler, "wrapper_json_handler", False) or _is_production_stream_handler(handler):
+            handler.setFormatter(formatter)
     managed = next(
         (handler for handler in root.handlers if getattr(handler, "wrapper_json_handler", False)),
         None,

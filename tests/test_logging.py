@@ -107,6 +107,23 @@ def test_third_party_record_drops_original_message_and_exception():
     assert "secret-in-message" not in json.dumps(payload)
 
 
+def test_configuration_keeps_non_production_capture_handler_formatter():
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    formatter = logging.Formatter("capture:%(message)s")
+    handler.setFormatter(formatter)
+    root = logging.getLogger()
+    root.addHandler(handler)
+    try:
+        configure_logging("INFO")
+        logging.getLogger("app.test.capture").info("hello")
+    finally:
+        root.removeHandler(handler)
+
+    assert handler.formatter is formatter
+    assert stream.getvalue().strip() == "capture:hello"
+
+
 def test_configuration_is_idempotent_and_applies_level():
     configure_logging("DEBUG")
     configure_logging("DEBUG")

@@ -193,6 +193,28 @@ def test_completed_event_updates_polling_result_once(monkeypatch):
     assert polled.json()["usage"]["total_tokens"] == 8
 
 
+def test_completed_event_passes_bounded_retry_operation_name(monkeypatch):
+    redis = FakeRedis()
+    seed_job(redis)
+    openai = FakeOpenAI(event=event(), result=completed_response())
+    install(monkeypatch, redis, openai)
+    calls = []
+
+    async def capture_retry(operation, *, operation_name, max_retries=2, sleep=None, random_value=None):
+        calls.append(operation_name)
+        return await operation()
+
+    monkeypatch.setattr("app.api.webhooks.retry_async", capture_retry)
+
+    with TestClient(create_app()) as client:
+        response = send(client)
+
+    assert response.status_code == 200
+    assert response.json() == {"received": True}
+    assert calls == ["retrieve"]
+    assert openai.responses.retrieve_calls == ["resp_1"]
+
+
 def test_unknown_response_is_retryable_and_released(monkeypatch):
     redis = FakeRedis()
     openai = FakeOpenAI(event=event(), result=completed_response())

@@ -116,7 +116,10 @@ async def receive_openai_webhook(request: Request):
             return {"received": True}
 
         if target_status is JobStatus.COMPLETED:
-            provider = await retry_async(lambda: request.app.state.openai.responses.retrieve(event.data.id))
+            provider = await retry_async(
+                lambda: request.app.state.openai.responses.retrieve(event.data.id),
+                operation_name="retrieve",
+            )
             if getattr(provider, "status", None) != "completed":
                 await release_event(redis, event.id, owner_token)
                 claimed = False

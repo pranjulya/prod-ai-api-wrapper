@@ -6,6 +6,7 @@ from app.services.jobs import job_key
 from app.services.webhooks import (
     PROCESSED_EVENT_TTL_SECONDS,
     EventClaim,
+    FinalizationResult,
     claim_event,
     event_key,
     finalize_event,
@@ -65,7 +66,7 @@ def test_stale_owner_cannot_release_mark_or_finalize_new_claim():
             "owner-a",
             active.model_copy(update={"status": JobStatus.FAILED}),
         )
-    ) is False
+    ) is FinalizationResult.STALE
 
     assert redis.values[event_key("evt_retry")] == "processing:owner-b"
     assert JobRecord.model_validate_json(redis.values[job_key(active.id)]).status is JobStatus.IN_PROGRESS
@@ -78,7 +79,10 @@ def test_finalization_updates_job_and_event_atomically():
     redis.values[job_key(active.id)] = active.model_dump_json()
     redis.values[event_key("evt_done")] = "processing:owner-a"
 
-    assert asyncio.run(finalize_event(redis, "evt_done", "owner-a", completed)) is True
+    assert (
+        asyncio.run(finalize_event(redis, "evt_done", "owner-a", completed))
+        is FinalizationResult.UPDATED
+    )
 
     assert redis.values[event_key("evt_done")] == "processed"
     assert redis.expirations[event_key("evt_done")] == PROCESSED_EVENT_TTL_SECONDS
@@ -99,7 +103,7 @@ def test_first_terminal_finalization_wins_across_different_events():
             "owner-a",
             active.model_copy(update={"status": JobStatus.FAILED}),
         )
-    ) is True
+    ) is FinalizationResult.UPDATED
     assert asyncio.run(
         finalize_event(
             redis,
@@ -107,7 +111,7 @@ def test_first_terminal_finalization_wins_across_different_events():
             "owner-b",
             active.model_copy(update={"status": JobStatus.COMPLETED, "output_text": "late"}),
         )
-    ) is True
+    ) is FinalizationResult.ALREADY_TERMINAL
 
     stored = JobRecord.model_validate_json(redis.values[job_key(active.id)])
     assert stored.status is JobStatus.FAILED

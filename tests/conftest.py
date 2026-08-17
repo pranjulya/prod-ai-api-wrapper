@@ -113,15 +113,18 @@ class FakeRedis:
                     return 0
                 if isinstance(current, bytes):
                     current = current.decode()
-                if json.loads(current)["status"] not in {
+                if json.loads(current)["status"] in {
                     "completed",
                     "failed",
                     "cancelled",
                     "incomplete",
                     "expired",
                 }:
-                    self.values[stored_job_key] = serialized_job
-                    self.expirations[stored_job_key] = int(job_ttl)
+                    self.values[event_key] = processed
+                    self.expirations[event_key] = int(processed_ttl)
+                    return 2
+                self.values[stored_job_key] = serialized_job
+                self.expirations[stored_job_key] = int(job_ttl)
                 self.values[event_key] = processed
                 self.expirations[event_key] = int(processed_ttl)
                 return 1

@@ -1,5 +1,5 @@
 import hashlib
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 
 from app.schemas.jobs import JobRecord
 from app.services.jobs import job_key, remaining_ttl
@@ -20,10 +20,12 @@ if redis.call("GET", KEYS[1]) ~= ARGV[1] then return 0 end
 local current = redis.call("GET", KEYS[2])
 if not current then return 0 end
 local status = cjson.decode(current)["status"]
-if status ~= "completed" and status ~= "failed" and status ~= "cancelled"
-   and status ~= "incomplete" and status ~= "expired" then
-    redis.call("SET", KEYS[2], ARGV[2], "EX", tonumber(ARGV[3]))
+if status == "completed" or status == "failed" or status == "cancelled"
+   or status == "incomplete" or status == "expired" then
+    redis.call("SET", KEYS[1], ARGV[4], "EX", tonumber(ARGV[5]))
+    return 2
 end
+redis.call("SET", KEYS[2], ARGV[2], "EX", tonumber(ARGV[3]))
 redis.call("SET", KEYS[1], ARGV[4], "EX", tonumber(ARGV[5]))
 return 1
 """
@@ -33,6 +35,12 @@ class EventClaim(StrEnum):
     ACQUIRED = "acquired"
     PROCESSING = "processing"
     PROCESSED = "processed"
+
+
+class FinalizationResult(IntEnum):
+    STALE = 0
+    UPDATED = 1
+    ALREADY_TERMINAL = 2
 
 
 def event_key(event_id: str) -> str:
@@ -80,7 +88,12 @@ async def mark_processed(redis, event_id: str, owner_token: str) -> bool:
     return bool(result)
 
 
-async def finalize_event(redis, event_id: str, owner_token: str, record: JobRecord) -> bool:
+async def finalize_event(
+    redis,
+    event_id: str,
+    owner_token: str,
+    record: JobRecord,
+) -> FinalizationResult:
     result = await redis.eval(
         FINALIZE_EVENT_SCRIPT,
         2,
@@ -92,4 +105,4 @@ async def finalize_event(redis, event_id: str, owner_token: str, record: JobReco
         EventClaim.PROCESSED.value,
         PROCESSED_EVENT_TTL_SECONDS,
     )
-    return bool(result)
+    return FinalizationResult(result)

@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -100,6 +101,7 @@ def completed_response():
     usage = SimpleNamespace(input_tokens=5, output_tokens=3, total_tokens=8)
     return SimpleNamespace(
         id="resp_1",
+        _request_id="req_webhook",
         status="completed",
         model="gpt-5-mini",
         output_text="done",
@@ -126,6 +128,26 @@ def test_invalid_signature_is_rejected_before_state_access(monkeypatch):
     assert openai.responses.retrieve_calls == []
 
 
+def test_invalid_signature_emits_rejected_event(monkeypatch, captured_events):
+    redis = FakeRedis()
+    openai = FakeOpenAI(webhook_error=InvalidWebhookSignatureError("secret-exception-text"))
+    install(monkeypatch, redis, openai)
+
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/webhooks/openai",
+            content=b'{"secret-body":true}',
+            headers=SIGNED_HEADERS,
+        )
+
+    rejected = [record for record in captured_events if record["event"] == "webhook_rejected"][-1]
+    assert response.status_code == 401
+    assert rejected["status_code"] == 401
+    assert rejected["error_category"] == "webhook_signature"
+    assert "secret-exception-text" not in json.dumps(captured_events)
+    assert "secret-body" not in json.dumps(captured_events)
+
+
 def test_missing_signature_is_rejected_by_the_real_sdk():
     with TestClient(create_app()) as client:
         response = client.post("/webhooks/openai", content=b"{}")
@@ -141,7 +163,9 @@ def test_missing_signature_is_rejected_by_the_real_sdk():
         iter((b"x" * (MAX_WEBHOOK_BODY_BYTES // 2), b"y" * (MAX_WEBHOOK_BODY_BYTES // 2 + 1))),
     ],
 )
-def test_oversized_webhook_body_is_rejected_before_verification(monkeypatch, content):
+def test_oversized_webhook_body_is_rejected_before_verification(
+    monkeypatch, captured_events, content
+):
     redis = FakeRedis()
     openai = FakeOpenAI(event=event(event_type="batch.completed"))
     install(monkeypatch, redis, openai)
@@ -153,6 +177,28 @@ def test_oversized_webhook_body_is_rejected_before_verification(monkeypatch, con
     assert response.json()["error"]["code"] == "request_too_large"
     assert openai.webhooks.calls == []
     assert redis.values == {}
+    rejected = [record for record in captured_events if record["event"] == "webhook_rejected"][-1]
+    assert rejected["status_code"] == 413
+    assert rejected["error_category"] == "request_too_large"
+
+
+def test_verified_webhook_emits_safe_type(monkeypatch, captured_events):
+    redis = FakeRedis()
+    seed_job(redis)
+    openai = FakeOpenAI(event=event(), result=completed_response())
+    install(monkeypatch, redis, openai)
+
+    with TestClient(create_app()) as client:
+        response = send(client)
+
+    verified = [record for record in captured_events if record["event"] == "webhook_verified"][-1]
+    assert response.status_code == 200
+    assert verified["webhook_type"] == "response.completed"
+    serialized = json.dumps(captured_events)
+    assert "test-signature" not in serialized
+    assert "evt_1" not in serialized
+    assert "resp_1" not in serialized
+    assert "done" not in serialized
 
 
 def test_verified_unsupported_event_is_acknowledged_without_state_change(monkeypatch):
@@ -171,7 +217,7 @@ def test_verified_unsupported_event_is_acknowledged_without_state_change(monkeyp
     assert redis.pipeline_calls == 0
 
 
-def test_completed_event_updates_polling_result_once(monkeypatch):
+def test_completed_event_updates_polling_result_once(monkeypatch, captured_events):
     redis = FakeRedis()
     seed_job(redis)
     openai = FakeOpenAI(event=event(), result=completed_response())
@@ -191,6 +237,19 @@ def test_completed_event_updates_polling_result_once(monkeypatch):
     assert polled.json()["model"] == "gpt-5-mini"
     assert polled.json()["output_text"] == "done"
     assert polled.json()["usage"]["total_tokens"] == 8
+    completed = [record for record in captured_events if record["event"] == "job_completed"]
+    assert len(completed) == 1
+    assert completed[0]["job_id"] == JOB_ID
+    assert completed[0]["correlation_id"] == "background-correlation"
+    assert completed[0]["openai_request_id"] == "req_webhook"
+    started = [record for record in captured_events if record["event"] == "openai_request_started"]
+    assert started[-1]["operation"] == "retrieve"
+    request_completed = [
+        record
+        for record in captured_events
+        if record["event"] == "request_completed" and record.get("openai_request_id")
+    ]
+    assert request_completed[0]["openai_request_id"] == "req_webhook"
 
 
 def test_completed_event_passes_bounded_retry_operation_name(monkeypatch):
@@ -229,7 +288,7 @@ def test_unknown_response_is_retryable_and_released(monkeypatch):
     assert second.status_code == 200
 
 
-def test_later_terminal_event_does_not_overwrite_completed_job(monkeypatch):
+def test_later_terminal_event_does_not_overwrite_completed_job(monkeypatch, captured_events):
     redis = FakeRedis()
     seed_job(redis, job(JobStatus.COMPLETED).model_copy(update={"output_text": "kept"}))
     openai = FakeOpenAI(event=event(event_id="evt_late", event_type="response.failed"))
@@ -243,6 +302,29 @@ def test_later_terminal_event_does_not_overwrite_completed_job(monkeypatch):
     assert stored.status is JobStatus.COMPLETED
     assert stored.output_text == "kept"
     assert openai.responses.retrieve_calls == []
+    assert not [record for record in captured_events if record["event"] == "job_completed"]
+
+
+def test_completed_event_losing_terminal_race_emits_no_completion(monkeypatch, captured_events):
+    class TerminalRaceRedis(FakeRedis):
+        async def eval(self, script, numkeys, *args):
+            if script.startswith("-- finalize-webhook-event"):
+                stored_job_key = args[1]
+                self.values[stored_job_key] = job(JobStatus.FAILED).model_dump_json()
+            return await super().eval(script, numkeys, *args)
+
+    redis = TerminalRaceRedis()
+    seed_job(redis)
+    openai = FakeOpenAI(event=event(), result=completed_response())
+    install(monkeypatch, redis, openai)
+
+    with TestClient(create_app()) as client:
+        response = send(client)
+
+    stored = JobRecord.model_validate_json(redis.values[job_key(JOB_ID)])
+    assert response.status_code == 200
+    assert stored.status is JobStatus.FAILED
+    assert not [record for record in captured_events if record["event"] == "job_completed"]
 
 
 @pytest.mark.parametrize(
@@ -281,10 +363,10 @@ def test_concurrent_owner_returns_retryable_503(monkeypatch):
     assert openai.responses.retrieve_calls == []
 
 
-def test_redis_failure_returns_retryable_503(monkeypatch):
+def test_redis_failure_returns_retryable_503(monkeypatch, captured_events):
     class ErrorRedis(FakeRedis):
         async def set(self, key, value, nx=False, ex=None):
-            raise ConnectionError("offline")
+            raise ConnectionError("redis-secret")
 
     redis = ErrorRedis()
     openai = FakeOpenAI(event=event(), result=completed_response())
@@ -295,6 +377,11 @@ def test_redis_failure_returns_retryable_503(monkeypatch):
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "upstream_unavailable"
+    failed = [record for record in captured_events if record["event"] == "request_failed"][-1]
+    assert failed["operation"] == "webhook"
+    assert failed["status_code"] == 503
+    assert failed["error_category"] == "redis"
+    assert "redis-secret" not in json.dumps(captured_events)
 
 
 def test_retrieval_timeout_returns_504_and_releases_claim(monkeypatch):

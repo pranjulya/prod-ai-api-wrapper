@@ -116,9 +116,7 @@ async def create_response(payload: ResponsesRequest, request: Request, idempoten
     try:
         await store(request.app.state.redis, key=key, request_hash_value=fingerprint, response=normalized, ttl_seconds=request.app.state.settings.idempotency_ttl_seconds)
     except RedisError:
-        await delete(request.app.state.redis, key)
         _log_redis_failure("create")
-        raise HTTPException(status_code=503) from None
     return normalized
 
 

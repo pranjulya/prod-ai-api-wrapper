@@ -190,6 +190,26 @@ def test_response_redis_failure_logs_request_failed(fake_openai, monkeypatch, ca
     assert "offline secret" not in json.dumps(captured_events)
 
 
+def test_response_store_failure_returns_result_without_second_provider_call(fake_openai, monkeypatch):
+    class StoreErrorRedis(FakeRedis):
+        async def set(self, key, value, nx=False, ex=None):
+            if not nx:
+                raise ConnectionError("store failed")
+            return await super().set(key, value, nx=nx, ex=ex)
+
+    redis = StoreErrorRedis()
+    monkeypatch.setattr("app.main.create_redis", lambda url: redis)
+
+    with TestClient(create_app()) as client:
+        first = client.post("/v1/responses", headers=headers(), json={"input": "Hi"})
+        second = client.post("/v1/responses", headers=headers(), json={"input": "Hi"})
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "idempotency_in_progress"
+    assert len(fake_openai.responses.calls) == 1
+
+
 def test_response_rejects_unsupported_model(fake_openai):
     with TestClient(create_app()) as client:
         response = client.post("/v1/responses", headers=headers(), json={"input": "Hi", "model": "not-allowed"})

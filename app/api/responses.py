@@ -214,9 +214,7 @@ async def create_background_response(
             openai_request_id=openai_request_id(response),
         )
     except RedisError:
-        await _release_background(request.app.state.redis, key)
         _log_redis_failure("background_create")
-        raise HTTPException(status_code=503) from None
     return public
 
 

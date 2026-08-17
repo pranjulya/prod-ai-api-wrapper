@@ -119,6 +119,18 @@ They connect the client response, structured logs, retries, background job
 metadata, and errors, making a single request diagnosable without recording
 sensitive prompts or credentials.
 
+## Why use structured JSON instead of formatted log sentences?
+
+Stable event and field names let log tools filter by correlation ID, route,
+status, retry count, or error category without parsing human prose. A strict
+field allowlist also makes the sensitive-data boundary testable.
+
+## Why omit raw exception messages and request bodies?
+
+Those values can contain credentials, prompts, model output, or upstream data.
+The wrapper records a stable category and diagnostic request ID instead, which
+supports investigation without copying sensitive content into logs.
+
 ## Do correlation IDs authorize a request?
 
 No. Bearer authentication controls access by proving that the caller has the

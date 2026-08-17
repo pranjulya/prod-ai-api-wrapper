@@ -15,6 +15,26 @@ Creation endpoints also require `Idempotency-Key: <unique-client-key>`.
 
 `X-Correlation-ID` must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`. If omitted, the wrapper generates one and returns it in the response header. `/webhooks/openai` does not use wrapper bearer authentication; it accepts only a valid OpenAI webhook signature.
 
+## Structured logging
+
+Application and Uvicorn logs are emitted as structured JSON. A typical request completion event looks like this:
+
+```json
+{
+  "timestamp": "2026-08-16T12:00:00.000Z",
+  "level": "info",
+  "event": "request_completed",
+  "logger": "app.middleware.correlation",
+  "correlation_id": "client.request-1",
+  "method": "POST",
+  "route": "/v1/responses",
+  "status_code": 200,
+  "duration_ms": 125.4
+}
+```
+
+Optional fields are omitted when unavailable. `LOG_LEVEL` controls both application and Uvicorn log levels. Logs never contain secrets, headers, bodies, prompts, output, Redis contents, provider response IDs, webhook event IDs, query strings, or raw exception details.
+
 ## Response creation request
 
 `POST /v1/responses` and `POST /v1/responses/background` accept the same body:

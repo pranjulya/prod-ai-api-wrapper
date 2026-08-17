@@ -103,6 +103,33 @@ class FakeRedis:
                 self.values[key] = values[1]
                 self.expirations[key] = int(values[2])
                 return 1
+            if script.startswith("-- finish-job-reconciliation"):
+                key = keys[0]
+                owner, cooldown, cooldown_ttl = values
+                if self.values.get(key) != owner:
+                    return 0
+                self.values[key] = cooldown
+                self.expirations[key] = int(cooldown_ttl)
+                return 1
+            if script.startswith("-- write-reconciled-job"):
+                stored_job_key = keys[0]
+                serialized_job, job_ttl = values
+                current = self.values.get(stored_job_key)
+                if current is None:
+                    return 0
+                if isinstance(current, bytes):
+                    current = current.decode()
+                if json.loads(current)["status"] in {
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    "incomplete",
+                    "expired",
+                }:
+                    return 2
+                self.values[stored_job_key] = serialized_job
+                self.expirations[stored_job_key] = int(job_ttl)
+                return 1
             if script.startswith("-- finalize-webhook-event"):
                 event_key, stored_job_key = keys
                 owner, serialized_job, job_ttl, processed, processed_ttl = values

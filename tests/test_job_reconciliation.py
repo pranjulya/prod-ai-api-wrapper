@@ -1,8 +1,20 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from app.schemas.jobs import BackgroundJobError, BackgroundJobResponse, JobRecord, JobStatus
-from app.services.job_reconciliation import apply_job_transition, transition_from_provider
+from app.services.job_reconciliation import (
+    RECONCILIATION_COOLDOWN_SECONDS,
+    JobWriteResult,
+    apply_job_transition,
+    claim_reconciliation,
+    finish_reconciliation,
+    reconciliation_key,
+    transition_from_provider,
+    write_reconciled_job,
+)
+from app.services.jobs import job_key
+from conftest import FakeRedis
 
 
 def record(status=JobStatus.IN_PROGRESS):
@@ -62,3 +74,32 @@ def test_provider_status_mapping_and_unknown_status():
 
 def test_explicit_transition_supports_webhook_terminal_status():
     assert apply_job_transition(record(), JobStatus.FAILED).status is JobStatus.FAILED
+
+
+def test_reconciliation_lease_is_hashed_owned_and_cooled_down():
+    redis = FakeRedis()
+    key = reconciliation_key("job_private")
+    assert "job_private" not in key
+    assert asyncio.run(claim_reconciliation(redis, "job_private", "owner-a", 100)) is True
+    assert asyncio.run(claim_reconciliation(redis, "job_private", "owner-b", 100)) is False
+    assert asyncio.run(finish_reconciliation(redis, "job_private", "owner-b")) is False
+    assert asyncio.run(finish_reconciliation(redis, "job_private", "owner-a")) is True
+    assert redis.values[key] == "cooldown"
+    assert redis.expirations[key] == RECONCILIATION_COOLDOWN_SECONDS
+
+
+def test_atomic_reconciliation_preserves_first_terminal_state():
+    redis = FakeRedis()
+    active = record()
+    redis.values[job_key(active.id)] = active.model_dump_json()
+    failed = apply_job_transition(active, JobStatus.FAILED)
+    completed = apply_job_transition(active, JobStatus.COMPLETED, provider=provider("completed"))
+
+    assert asyncio.run(write_reconciled_job(redis, failed)) is JobWriteResult.UPDATED
+    assert asyncio.run(write_reconciled_job(redis, completed)) is JobWriteResult.ALREADY_TERMINAL
+    stored = JobRecord.model_validate_json(redis.values[job_key(active.id)])
+    assert stored.status is JobStatus.FAILED
+
+
+def test_atomic_reconciliation_reports_missing_job():
+    assert asyncio.run(write_reconciled_job(FakeRedis(), record())) is JobWriteResult.MISSING

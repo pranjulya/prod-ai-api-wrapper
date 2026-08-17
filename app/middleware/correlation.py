@@ -15,10 +15,19 @@ CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 def _route(request) -> str:
-    if not request.path_params:
-        return request.url.path
+    fastapi_scope = request.scope.get("fastapi")
+    if isinstance(fastapi_scope, dict):
+        context = fastapi_scope.get("effective_route_context")
+        for field in ("path_format", "path"):
+            value = context.get(field) if isinstance(context, dict) else getattr(context, field, None)
+            if isinstance(value, str) and value:
+                return value
     route = request.scope.get("route")
-    return getattr(route, "path", request.url.path)
+    for field in ("path_format", "path"):
+        value = getattr(route, field, None)
+        if isinstance(value, str) and value:
+            return value
+    return request.url.path
 
 
 class CorrelationMiddleware(BaseHTTPMiddleware):

@@ -188,3 +188,15 @@ def test_invalid_correlation_completion_is_categorized(captured_events):
     assert response.status_code == 400
     assert completed["status_code"] == 400
     assert completed["error_category"] == "validation"
+
+
+def test_prefixed_dynamic_route_uses_full_route_template(captured_events):
+    with TestClient(create_app()) as client:
+        response = client.get(
+            "/v1/responses/not-a-job-id",
+            headers={"Authorization": "Bearer test-wrapper-key"},
+        )
+
+    completed = event(captured_events, "request_completed")[-1]
+    assert response.status_code == 404
+    assert completed["route"] == "/v1/responses/{job_id}"

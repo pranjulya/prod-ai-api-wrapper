@@ -47,4 +47,5 @@ async def http_exception_handler(request, exc: StarletteHTTPException) -> JSONRe
 
 
 async def validation_exception_handler(request, exc: RequestValidationError) -> JSONResponse:
+    request.state.error_category = "validation"
     return error_response(422, "validation_error", "Request validation failed.", request.state.correlation_id)

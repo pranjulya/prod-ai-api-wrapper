@@ -1,8 +1,13 @@
 import hmac
+import logging
 
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.errors import error_response
+from app.logging import log_event
+
+
+logger = logging.getLogger(__name__)
 
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):
@@ -13,6 +18,15 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         if scheme != "Bearer" or not credential or not credential.isascii() or not hmac.compare_digest(
             credential, request.app.state.settings.wrapper_api_key
         ):
+            log_event(
+                logger,
+                logging.WARNING,
+                "authentication_failed",
+                method=request.method,
+                route=request.url.path,
+                status_code=401,
+                error_category="authentication",
+            )
             return error_response(
                 401,
                 "authentication_failed",

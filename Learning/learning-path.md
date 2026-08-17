@@ -27,7 +27,8 @@ working service.
 13. **Job status (complete)** — let clients poll Redis-backed job state safely without calling OpenAI.
 14. **Webhooks (complete)** — verify OpenAI events, deduplicate delivery in
     Redis, and update terminal jobs exactly once.
-15. **Observability** — add structured logs and correlation-aware events.
+15. **Observability (complete)** — emit safe structured application and Uvicorn
+    events with correlation IDs, durations, retry counts, and error categories.
 16. **Testing** — automate unit, integration, and contract checks.
 17. **Local operations** — complete Docker Compose and smoke-test workflows.
 

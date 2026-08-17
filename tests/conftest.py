@@ -1,7 +1,10 @@
 import json
+import logging
 import threading
 
 import pytest
+
+from app.logging import JsonFormatter
 
 
 class FakePipeline:
@@ -110,15 +113,18 @@ class FakeRedis:
                     return 0
                 if isinstance(current, bytes):
                     current = current.decode()
-                if json.loads(current)["status"] not in {
+                if json.loads(current)["status"] in {
                     "completed",
                     "failed",
                     "cancelled",
                     "incomplete",
                     "expired",
                 }:
-                    self.values[stored_job_key] = serialized_job
-                    self.expirations[stored_job_key] = int(job_ttl)
+                    self.values[event_key] = processed
+                    self.expirations[event_key] = int(processed_ttl)
+                    return 2
+                self.values[stored_job_key] = serialized_job
+                self.expirations[stored_job_key] = int(job_ttl)
                 self.values[event_key] = processed
                 self.expirations[event_key] = int(processed_ttl)
                 return 1
@@ -153,3 +159,23 @@ def valid_environment(monkeypatch):
 @pytest.fixture(autouse=True)
 def fake_redis(monkeypatch):
     monkeypatch.setattr("app.main.create_redis", lambda url: FakeRedis())
+
+
+@pytest.fixture
+def captured_events():
+    records = []
+
+    class Capture(logging.Handler):
+        def emit(self, record):
+            records.append(json.loads(JsonFormatter().format(record)))
+
+    logger = logging.getLogger("app")
+    handler = Capture()
+    previous_level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    try:
+        yield records
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)

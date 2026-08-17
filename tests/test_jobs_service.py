@@ -35,8 +35,12 @@ async def _exercise_job_storage():
     await update_job(redis, updated)
     assert '"status":"in_progress"' in redis.values[job_key(record.id)]
     assert '"openai_response_id":"resp_123"' in redis.values[job_key(record.id)]
+    await jobs_service.update_job_with_response_id(redis, updated)
+    pipelines_before_delete = redis.pipeline_calls
     await delete_job(redis, record.id)
     assert job_key(record.id) not in redis.values
+    assert jobs_service.response_job_key("resp_123") not in redis.values
+    assert redis.pipeline_calls == pipelines_before_delete + 1
 
 
 def test_get_job_returns_record_without_writing():

@@ -48,4 +48,9 @@ async def get_job_id_by_response_id(redis, openai_response_id: str) -> str | Non
 
 
 async def delete_job(redis, job_id: str) -> None:
-    await redis.delete(job_key(job_id))
+    record = await get_job(redis, job_id)
+    pipeline = redis.pipeline(transaction=True)
+    pipeline.delete(job_key(job_id))
+    if record is not None and record.openai_response_id is not None:
+        pipeline.delete(response_job_key(record.openai_response_id))
+    await pipeline.execute()

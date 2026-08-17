@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from redis.exceptions import ConnectionError
 
 from app.main import create_app
+from app.services import jobs as jobs_service
 from conftest import FakeRedis
 
 
@@ -23,6 +24,40 @@ class FakeOpenAI:
 
     async def close(self):
         pass
+
+
+class ExecuteErrorPipeline:
+    def __init__(self, pipeline):
+        self.pipeline = pipeline
+
+    def set(self, *args, **kwargs):
+        self.pipeline.set(*args, **kwargs)
+
+    def incr(self, *args, **kwargs):
+        self.pipeline.incr(*args, **kwargs)
+
+    def expire(self, *args, **kwargs):
+        self.pipeline.expire(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self.pipeline.delete(*args, **kwargs)
+
+    async def execute(self):
+        if any(command[0] == "set" and command[1].startswith("wrapper:job:") for command in self.pipeline.commands):
+            raise ConnectionError("pipeline failed")
+        return await self.pipeline.execute()
+
+
+class ProviderIdErrorRedis(FakeRedis):
+    def pipeline(self, transaction=True):
+        return ExecuteErrorPipeline(super().pipeline(transaction=transaction))
+
+
+class IdempotencyStoreErrorRedis(FakeRedis):
+    async def set(self, key, value, nx=False, ex=None):
+        if key.startswith("wrapper:idempotency:") and not nx:
+            raise ConnectionError("store failed")
+        return await super().set(key, value, nx=nx, ex=ex)
 
 
 def headers(key="background-key"):
@@ -106,3 +141,37 @@ def test_background_redis_failure_logs_request_failed(monkeypatch, captured_even
     assert failed["error_category"] == "redis"
     assert failed["operation"] == "background_create"
     assert "offline secret" not in json.dumps(captured_events)
+
+
+def test_background_post_provider_job_update_failure_does_not_call_provider_twice(monkeypatch):
+    openai = FakeOpenAI()
+    redis = ProviderIdErrorRedis()
+    monkeypatch.setattr("app.main.create_openai_client", lambda settings: openai)
+    monkeypatch.setattr("app.main.create_redis", lambda url: redis)
+
+    with TestClient(create_app()) as client:
+        first = client.post("/v1/responses/background", headers=headers(), json={"input": "Hi"})
+        second = client.post("/v1/responses/background", headers=headers(), json={"input": "Hi"})
+
+    assert first.status_code == 202
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "idempotency_in_progress"
+    assert len(openai.responses.calls) == 1
+
+
+def test_background_idempotency_store_failure_preserves_job_and_does_not_call_provider_twice(monkeypatch):
+    openai = FakeOpenAI()
+    redis = IdempotencyStoreErrorRedis()
+    monkeypatch.setattr("app.main.create_openai_client", lambda settings: openai)
+    monkeypatch.setattr("app.main.create_redis", lambda url: redis)
+
+    with TestClient(create_app()) as client:
+        first = client.post("/v1/responses/background", headers=headers(), json={"input": "Hi"})
+        second = client.post("/v1/responses/background", headers=headers(), json={"input": "Hi"})
+
+    assert first.status_code == 202
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "idempotency_in_progress"
+    assert len(openai.responses.calls) == 1
+    assert jobs_service.job_key(first.json()["id"]) in redis.values
+    assert jobs_service.response_job_key("resp_background") in redis.values

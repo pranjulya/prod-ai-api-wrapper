@@ -46,8 +46,14 @@ def fake_openai(monkeypatch):
     async def no_wait(seconds):
         pass
 
-    async def immediate_retry(operation):
-        return await retry_async(operation, sleep=no_wait, random_value=lambda: 0)
+    async def immediate_retry(operation, *, operation_name, max_retries=2, sleep=no_wait, random_value=lambda: 0):
+        return await retry_async(
+            operation,
+            operation_name=operation_name,
+            max_retries=max_retries,
+            sleep=sleep,
+            random_value=random_value,
+        )
 
     monkeypatch.setattr("app.api.responses.retry_async", immediate_retry)
     return make

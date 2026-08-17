@@ -1,12 +1,44 @@
 import asyncio
+import logging
 import random
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 try:
-    from openai import APIConnectionError, APITimeoutError, APIStatusError, RateLimitError
+    from openai import APIConnectionError, APITimeoutError, APIStatusError, AuthenticationError, RateLimitError
 except ImportError:  # pragma: no cover - dependency is required at runtime
-    APIConnectionError = APITimeoutError = APIStatusError = RateLimitError = ()
+    APIConnectionError = APITimeoutError = APIStatusError = AuthenticationError = RateLimitError = ()
+
+from app.logging import log_event
+
+
+logger = logging.getLogger(__name__)
+
+
+def openai_request_id(value) -> str | None:
+    direct = getattr(value, "_request_id", None) or getattr(value, "request_id", None)
+    if isinstance(direct, str) and direct:
+        return direct
+    response = getattr(value, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers:
+        candidate = headers.get("x-request-id") or headers.get("X-Request-ID")
+        return candidate if isinstance(candidate, str) and candidate else None
+    return None
+
+
+def openai_error_category(error: Exception) -> str:
+    if isinstance(error, APITimeoutError):
+        return "openai_timeout"
+    if isinstance(error, APIConnectionError):
+        return "openai_connection"
+    if isinstance(error, RateLimitError):
+        return "openai_rate_limit"
+    if isinstance(error, AuthenticationError):
+        return "openai_authentication"
+    if isinstance(error, APIStatusError):
+        return "openai_5xx" if error.status_code >= 500 else "openai_4xx"
+    return "internal"
 
 
 def _retry_after(error: Exception) -> float | None:
@@ -34,6 +66,7 @@ def _transient(error: Exception) -> bool:
 async def retry_async(
     operation: Callable[[], Awaitable[Any]],
     *,
+    operation_name: str,
     max_retries: int = 2,
     sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
     random_value: Callable[[], float] = random.random,
@@ -43,6 +76,15 @@ async def retry_async(
         try:
             return await operation()
         except Exception as error:
+            log_event(
+                logger,
+                logging.WARNING,
+                "openai_request_failed",
+                operation=operation_name,
+                retry_count=attempt,
+                openai_request_id=openai_request_id(error),
+                error_category=openai_error_category(error),
+            )
             if attempt >= retries or not _transient(error):
                 raise
             delay = _retry_after(error)

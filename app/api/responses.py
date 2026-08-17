@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -6,14 +7,16 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError, Authenti
 from redis.exceptions import RedisError
 
 from app.errors import IdempotencyConflictError, JobNotFoundError, UnsupportedModelError
+from app.logging import log_event
 from app.schemas.responses import ResponsesRequest, ResponsesResponse
 from app.schemas.jobs import BackgroundJobResponse, JobRecord, JobStatus
 from app.services.jobs import create_job, delete_job, get_job, update_job_with_response_id
-from app.services.retry import retry_async
+from app.services.retry import openai_request_id, retry_async
 from app.services.idempotency import ClaimStatus, claim, delete, redis_key, request_hash, store
 from app.services.responses import normalize_response
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _valid_job_id(job_id: str) -> bool:
@@ -44,6 +47,17 @@ async def _release_background(redis, idempotency_key: str, job_id: str | None = 
         pass
 
 
+def _log_redis_failure(operation: str) -> None:
+    log_event(
+        logger,
+        logging.ERROR,
+        "request_failed",
+        operation=operation,
+        status_code=503,
+        error_category="redis",
+    )
+
+
 @router.post("/responses", response_model=ResponsesResponse)
 async def create_response(payload: ResponsesRequest, request: Request, idempotency_key: str | None = Header(default=None)) -> ResponsesResponse:
     if not idempotency_key or not idempotency_key.strip():
@@ -69,9 +83,21 @@ async def create_response(payload: ResponsesRequest, request: Request, idempoten
                 raise IdempotencyConflictError("idempotency_key_reused")
             if result.record.state == "in_progress":
                 raise IdempotencyConflictError("idempotency_in_progress")
-            return ResponsesResponse.model_validate(result.record.response)
-        response = await retry_async(lambda: request.app.state.openai.responses.create(**kwargs))
+            replayed = ResponsesResponse.model_validate(result.record.response)
+            log_event(
+                logger,
+                logging.INFO,
+                "idempotency_replayed",
+                operation="create",
+            )
+            return replayed
+        log_event(logger, logging.INFO, "openai_request_started", operation="create", retry_count=0)
+        response = await retry_async(
+            lambda: request.app.state.openai.responses.create(**kwargs),
+            operation_name="create",
+        )
     except RedisError:
+        _log_redis_failure("create")
         raise HTTPException(status_code=503) from None
     except APITimeoutError:
         await delete(request.app.state.redis, key)
@@ -85,11 +111,13 @@ async def create_response(payload: ResponsesRequest, request: Request, idempoten
             raise HTTPException(status_code=503) from None
         await delete(request.app.state.redis, key)
         raise
+    request.state.openai_request_id = openai_request_id(response)
     normalized = normalize_response(response, request.state.correlation_id)
     try:
         await store(request.app.state.redis, key=key, request_hash_value=fingerprint, response=normalized, ttl_seconds=request.app.state.settings.idempotency_ttl_seconds)
     except RedisError:
         await delete(request.app.state.redis, key)
+        _log_redis_failure("create")
         raise HTTPException(status_code=503) from None
     return normalized
 
@@ -137,13 +165,24 @@ async def create_background_response(
                 raise IdempotencyConflictError("idempotency_key_reused")
             if result.record.state == "in_progress":
                 raise IdempotencyConflictError("idempotency_in_progress")
-            return BackgroundJobResponse.model_validate(result.record.response)
+            replayed = BackgroundJobResponse.model_validate(result.record.response)
+            log_event(
+                logger,
+                logging.INFO,
+                "idempotency_replayed",
+                operation="background_create",
+                job_id=replayed.id,
+            )
+            return replayed
         await create_job(request.app.state.redis, record, settings.job_ttl_seconds)
+        log_event(logger, logging.INFO, "openai_request_started", operation="background_create", retry_count=0)
         response = await retry_async(
-            lambda: request.app.state.openai.responses.create(**_request_kwargs(payload, model), background=True)
+            lambda: request.app.state.openai.responses.create(**_request_kwargs(payload, model), background=True),
+            operation_name="background_create",
         )
     except RedisError:
         await _release_background(request.app.state.redis, key, job_id)
+        _log_redis_failure("background_create")
         raise HTTPException(status_code=503) from None
     except APITimeoutError:
         await _release_background(request.app.state.redis, key, job_id)
@@ -168,8 +207,17 @@ async def create_background_response(
             response=public,
             ttl_seconds=settings.idempotency_ttl_seconds,
         )
+        log_event(
+            logger,
+            logging.INFO,
+            "background_job_created",
+            operation="background_create",
+            job_id=record.id,
+            openai_request_id=openai_request_id(response),
+        )
     except RedisError:
         await _release_background(request.app.state.redis, key)
+        _log_redis_failure("background_create")
         raise HTTPException(status_code=503) from None
     return public
 

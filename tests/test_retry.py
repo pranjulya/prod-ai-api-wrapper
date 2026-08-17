@@ -144,6 +144,42 @@ def test_logs_failure_category_and_diagnostic_request_id(captured_events, error,
     assert str(error) not in json.dumps(captured_events)
 
 
+def test_arbitrary_exception_request_id_is_omitted(captured_events):
+    class ArbitraryError(RuntimeError):
+        request_id = "arbitrary-exception-id-secret"
+
+    error = ArbitraryError("provider secret")
+
+    async def operation():
+        raise error
+
+    with pytest.raises(ArbitraryError) as caught:
+        asyncio.run(retry_async(operation, operation_name="create", max_retries=0))
+
+    failed = event(captured_events, "openai_request_failed")[-1]
+    assert caught.value is error
+    assert "openai_request_id" not in failed
+    assert "arbitrary-exception-id-secret" not in json.dumps(captured_events)
+
+
+def test_raising_request_id_property_does_not_replace_provider_error(captured_events):
+    class RaisingRequestIdError(RuntimeError):
+        @property
+        def request_id(self):
+            raise ValueError("request-id-accessor-secret")
+
+    error = RaisingRequestIdError("original provider failure")
+
+    async def operation():
+        raise error
+
+    with pytest.raises(RaisingRequestIdError) as caught:
+        asyncio.run(retry_async(operation, operation_name="create", max_retries=0))
+
+    assert caught.value is error
+    assert "request-id-accessor-secret" not in json.dumps(captured_events)
+
+
 def test_log_event_swallows_logging_infrastructure_failure():
     class RaisingLogger(logging.Logger):
         def handle(self, record):

@@ -171,9 +171,11 @@ def captured_events():
 
     logger = logging.getLogger("app")
     handler = Capture()
+    previous_level = logger.level
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)
     try:
         yield records
     finally:
         logger.removeHandler(handler)
+        logger.setLevel(previous_level)

@@ -26,13 +26,12 @@ ALLOWED_FIELDS = frozenset(
 )
 _correlation_id = contextvars.ContextVar("correlation_id", default=None)
 _MISSING = object()
+_APPLICATION_EVENT_MARKER = object()
 
 
 def _is_production_stream_handler(handler: logging.Handler) -> bool:
-    return isinstance(handler, logging.StreamHandler) and getattr(handler, "stream", None) in {
-        sys.stdout,
-        sys.stderr,
-    }
+    stream = getattr(handler, "stream", None)
+    return isinstance(handler, logging.StreamHandler) and (stream is sys.stdout or stream is sys.stderr)
 
 
 def _safe(value):
@@ -62,7 +61,7 @@ class JsonFormatter(logging.Formatter):
             payload = {
                 "timestamp": _timestamp(record.created),
                 "level": record.levelname.lower(),
-                "event": getattr(record, "event", "third_party_log"),
+                "event": "third_party_log",
                 "logger": record.name,
             }
             if record.name == "uvicorn.access":
@@ -74,15 +73,19 @@ class JsonFormatter(logging.Formatter):
                     status_code=int(status_code),
                 )
             elif record.name in {"uvicorn", "uvicorn.error"}:
-                payload.update(event="uvicorn_server", message=record.getMessage())
-            elif hasattr(record, "event"):
+                payload.update(event="uvicorn_server", message="Uvicorn server record.")
+            elif getattr(record, "_wrapper_application_event", None) is _APPLICATION_EVENT_MARKER:
+                event = getattr(record, "event", None)
+                if not isinstance(event, str) or not event:
+                    raise ValueError("invalid application event")
+                payload["event"] = event
                 for field in ALLOWED_FIELDS:
                     value = _safe(getattr(record, field, None))
                     if value is not _MISSING:
                         payload[field] = value
             else:
                 payload["message"] = "Third-party log record."
-            return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
         except Exception:
             return json.dumps(
                 {
@@ -92,6 +95,7 @@ class JsonFormatter(logging.Formatter):
                     "logger": "logging",
                 },
                 separators=(",", ":"),
+                allow_nan=False,
             )
 
 
@@ -104,7 +108,7 @@ def reset_correlation_id(token) -> None:
 
 
 def log_event(logger: logging.Logger, level: int, event: str, **fields: object) -> None:
-    extras = {"event": event}
+    extras = {"event": event, "_wrapper_application_event": _APPLICATION_EVENT_MARKER}
     correlation_id = fields.pop("correlation_id", None) or _correlation_id.get()
     if correlation_id is not None:
         fields["correlation_id"] = correlation_id
@@ -124,17 +128,26 @@ def configure_logging(level: str) -> None:
     formatter = JsonFormatter()
     root = logging.getLogger()
     root.setLevel(numeric_level)
-    for handler in root.handlers:
-        if getattr(handler, "wrapper_json_handler", False) or _is_production_stream_handler(handler):
-            handler.setFormatter(formatter)
     managed = next(
-        (handler for handler in root.handlers if getattr(handler, "wrapper_json_handler", False)),
+        (
+            handler
+            for handler in root.handlers
+            if isinstance(handler, logging.StreamHandler) and getattr(handler, "wrapper_json_handler", False)
+        ),
         None,
     )
     if managed is None:
-        managed = logging.StreamHandler(sys.stdout)
-        managed.wrapper_json_handler = True
-        root.addHandler(managed)
+        managed = next((handler for handler in root.handlers if _is_production_stream_handler(handler)), None)
+        if managed is None:
+            managed = logging.StreamHandler(sys.stdout)
+            root.addHandler(managed)
+    for handler in list(root.handlers):
+        if handler is not managed and (
+            getattr(handler, "wrapper_json_handler", False) or _is_production_stream_handler(handler)
+        ):
+            root.removeHandler(handler)
+    managed.stream = sys.stdout
+    managed.wrapper_json_handler = True
     managed.setLevel(numeric_level)
     managed.setFormatter(formatter)
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):

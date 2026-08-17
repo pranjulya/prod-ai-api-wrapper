@@ -3,6 +3,7 @@ import json
 import logging
 import sys
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -83,19 +84,28 @@ def test_uvicorn_access_record_is_structured_without_query_string():
     assert "secret" not in json.dumps(payload)
 
 
-def test_uvicorn_server_record_keeps_only_the_rendered_message():
+@pytest.mark.parametrize(
+    ("message", "args", "secret"),
+    [
+        ("Started %s", ("formatted-secret",), "formatted-secret"),
+        (RuntimeError("exception-secret"), (), "exception-secret"),
+        ("Lifespan startup failed: lifespan-secret", (), "lifespan-secret"),
+    ],
+)
+def test_uvicorn_server_record_uses_static_safe_message(message, args, secret):
     record = logging.LogRecord(
         "uvicorn.error",
         logging.INFO,
         __file__,
         1,
-        "Started %s",
-        ("server",),
+        message,
+        args,
         None,
     )
     payload = decode(record)
     assert payload["event"] == "uvicorn_server"
-    assert payload["message"] == "Started server"
+    assert payload["message"] == "Uvicorn server record."
+    assert secret not in json.dumps(payload)
 
 
 def test_third_party_record_drops_original_message_and_exception():
@@ -112,6 +122,51 @@ def test_third_party_record_drops_original_message_and_exception():
     assert payload["event"] == "third_party_log"
     assert payload["message"] == "Third-party log record."
     assert "secret-in-message" not in json.dumps(payload)
+
+
+def test_third_party_record_with_event_attribute_is_still_redacted():
+    record = logging.LogRecord(
+        "httpx",
+        logging.ERROR,
+        __file__,
+        1,
+        "ignored",
+        (),
+        None,
+    )
+    record.event = "third-party-event-secret"
+    record.duration_ms = float("nan")
+
+    payload = decode(record)
+
+    assert payload["event"] == "third_party_log"
+    assert payload["message"] == "Third-party log record."
+    assert "third-party-event-secret" not in json.dumps(payload, allow_nan=False)
+    assert "duration_ms" not in payload
+
+
+def test_application_event_omits_malformed_and_nonfinite_fields():
+    stream = io.StringIO()
+    logger = logging.getLogger("app.test.invalid-fields")
+    logger.handlers = []
+    logger.propagate = False
+    logger.setLevel(logging.INFO)
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    logger.addHandler(handler)
+
+    log_event(
+        logger,
+        logging.INFO,
+        "safe_event",
+        status_code=object(),
+        duration_ms=float("nan"),
+    )
+
+    payload = json.loads(stream.getvalue(), parse_constant=lambda value: pytest.fail(value))
+    assert payload["event"] == "safe_event"
+    assert "status_code" not in payload
+    assert "duration_ms" not in payload
 
 
 def test_configuration_keeps_non_production_capture_handler_formatter():
@@ -131,6 +186,29 @@ def test_configuration_keeps_non_production_capture_handler_formatter():
     assert stream.getvalue().strip() == "capture:hello"
 
 
+def test_configuration_reuses_one_console_handler_and_preserves_capture(monkeypatch):
+    root = logging.getLogger()
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    capture_stream = io.StringIO()
+    capture_handler = logging.StreamHandler(capture_stream)
+    capture_formatter = logging.Formatter("capture:%(message)s")
+    capture_handler.setFormatter(capture_formatter)
+    monkeypatch.setattr(root, "handlers", [stderr_handler, stdout_handler, capture_handler])
+    monkeypatch.setattr(root, "level", root.level)
+
+    configure_logging("INFO")
+
+    console_handlers = [handler for handler in root.handlers if handler in {stderr_handler, stdout_handler}]
+    assert len(console_handlers) == 1
+    assert console_handlers[0].stream is sys.stdout
+    assert getattr(console_handlers[0], "wrapper_json_handler", False)
+    assert capture_handler in root.handlers
+    assert capture_handler.formatter is capture_formatter
+    logging.getLogger("app.test.capture-topology").info("hello")
+    assert capture_stream.getvalue().strip() == "capture:hello"
+
+
 def test_configuration_is_idempotent_and_applies_level():
     configure_logging("DEBUG")
     configure_logging("DEBUG")
@@ -146,10 +224,20 @@ def test_configuration_is_idempotent_and_applies_level():
         assert logger.propagate is True
 
 
-def test_malformed_record_falls_back_to_valid_json():
-    record = logging.LogRecord("app.test", logging.INFO, __file__, 1, "ignored", (), None)
-    record.event = object()
-    payload = decode(record)
+@pytest.mark.parametrize("invalid_event", [object(), float("nan")])
+def test_malformed_application_event_falls_back_to_strict_valid_json(invalid_event):
+    stream = io.StringIO()
+    logger = logging.getLogger("app.test.malformed")
+    logger.handlers = []
+    logger.propagate = False
+    logger.setLevel(logging.INFO)
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    logger.addHandler(handler)
+
+    log_event(logger, logging.INFO, invalid_event)
+
+    payload = json.loads(stream.getvalue(), parse_constant=lambda value: pytest.fail(value))
     assert payload["event"] == "logging_error"
     assert set(payload) == {"timestamp", "level", "event", "logger"}
 

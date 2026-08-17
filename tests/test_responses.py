@@ -122,6 +122,28 @@ def test_response_allows_missing_provider_usage(fake_openai):
     assert response.json()["usage"] is None
 
 
+def test_response_ignores_raising_diagnostic_request_id(fake_openai, captured_events):
+    class RaisingRequestIdResponse(SimpleNamespace):
+        @property
+        def _request_id(self):
+            raise RuntimeError("diagnostic-accessor-secret")
+
+    fake_openai.responses.response = RaisingRequestIdResponse(
+        id="resp_123",
+        status="completed",
+        model="gpt-5-mini",
+        output_text="Hello from OpenAI",
+        usage=None,
+    )
+
+    with TestClient(create_app()) as client:
+        response = client.post("/v1/responses", headers=headers(), json={"input": "Hi"})
+
+    assert response.status_code == 200
+    assert len(fake_openai.responses.calls) == 1
+    assert "diagnostic-accessor-secret" not in json.dumps(captured_events)
+
+
 def test_response_replay_logs_idempotency_replayed_and_redacts_request_data(fake_openai, captured_events):
     prompt = "prompt-sentinel-task-3"
     key = "idempotency-key-sentinel-task-3"

@@ -8,6 +8,15 @@ try:
     from openai import APIConnectionError, APITimeoutError, APIStatusError, AuthenticationError, RateLimitError
 except ImportError:  # pragma: no cover - dependency is required at runtime
     APIConnectionError = APITimeoutError = APIStatusError = AuthenticationError = RateLimitError = ()
+    _OPENAI_ERROR_TYPES = ()
+else:
+    _OPENAI_ERROR_TYPES = (
+        APIConnectionError,
+        APITimeoutError,
+        APIStatusError,
+        AuthenticationError,
+        RateLimitError,
+    )
 
 from app.logging import log_event
 
@@ -16,15 +25,21 @@ logger = logging.getLogger(__name__)
 
 
 def openai_request_id(value) -> str | None:
-    direct = getattr(value, "_request_id", None) or getattr(value, "request_id", None)
-    if isinstance(direct, str) and direct:
-        return direct
-    response = getattr(value, "response", None)
-    headers = getattr(response, "headers", None)
-    if headers:
+    try:
+        if not isinstance(value, Exception):
+            candidate = getattr(value, "_request_id", None)
+            return candidate if isinstance(candidate, str) and candidate else None
+        if not isinstance(value, _OPENAI_ERROR_TYPES):
+            return None
+        candidate = getattr(value, "request_id", None)
+        if isinstance(candidate, str) and candidate:
+            return candidate
+        response = getattr(value, "response", None)
+        headers = getattr(response, "headers", None)
         candidate = headers.get("x-request-id") or headers.get("X-Request-ID")
         return candidate if isinstance(candidate, str) and candidate else None
-    return None
+    except Exception:
+        return None
 
 
 def openai_error_category(error: Exception) -> str:

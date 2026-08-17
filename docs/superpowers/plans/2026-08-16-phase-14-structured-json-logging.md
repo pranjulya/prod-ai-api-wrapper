@@ -137,19 +137,20 @@ def test_uvicorn_access_record_is_structured_without_query_string():
     assert "secret" not in json.dumps(payload)
 
 
-def test_uvicorn_server_record_keeps_only_the_rendered_message():
+def test_uvicorn_server_record_uses_static_safe_message():
     record = logging.LogRecord(
         "uvicorn.error",
         logging.INFO,
         __file__,
         1,
         "Started %s",
-        ("server",),
+        ("secret",),
         None,
     )
     payload = decode(record)
     assert payload["event"] == "uvicorn_server"
-    assert payload["message"] == "Started server"
+    assert payload["message"] == "Uvicorn server record."
+    assert "secret" not in json.dumps(payload)
 
 
 def test_third_party_record_drops_original_message_and_exception():
@@ -271,7 +272,7 @@ class JsonFormatter(logging.Formatter):
                     status_code=int(status_code),
                 )
             elif record.name in {"uvicorn", "uvicorn.error"}:
-                payload.update(event="uvicorn_server", message=record.getMessage())
+                payload.update(event="uvicorn_server", message="Uvicorn server record.")
             elif hasattr(record, "event"):
                 for field in ALLOWED_FIELDS:
                     value = _safe(getattr(record, field, None))

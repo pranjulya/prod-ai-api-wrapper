@@ -173,8 +173,9 @@ Categories describe the boundary failure, not raw exception text.
 - `uvicorn.access` records use `event="uvicorn_access"` and extract method,
   route/path, and status code from the documented access-log arguments. Query
   strings are removed.
-- `uvicorn` and `uvicorn.error` records use `event="uvicorn_server"` and keep
-  their formatted server message.
+- `uvicorn` and `uvicorn.error` records use `event="uvicorn_server"` and the
+  static safe message `"Uvicorn server record."`; raw messages and arguments
+  are never rendered.
 - Other third-party records use `event="third_party_log"` and a static safe
   message. Their original formatted message, arguments, exception information,
   and stack information are not serialized.
@@ -208,8 +209,8 @@ Tests must prove:
   lowercase level, stable event, and logger.
 - Configuration is idempotent and applies `LOG_LEVEL` to application and
   Uvicorn loggers without duplicate handlers.
-- Uvicorn server and access records are JSON; access records exclude query
-  strings.
+- Uvicorn server and access records are JSON; server records use the static
+  safe message and access records exclude query strings.
 - A normal request emits correlated start and completion records with method,
   resolved route template, status, and non-negative duration.
 - Invalid correlation IDs and unexpected failures preserve existing responses

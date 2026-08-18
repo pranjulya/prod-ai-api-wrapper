@@ -90,7 +90,9 @@ The status endpoint returns `202` while a job is pending or in progress and
 one caller per Redis cooldown may retrieve OpenAI and atomically store the
 result; webhooks remain the fast path. Polling never creates a second model
 response and does not extend the job's original expiry. OpenAI background responses are polled only during
-their roughly ten-minute provider window; this wrapper has no scheduled reconciler after that window.
+their roughly ten-minute provider window; this wrapper has no scheduled reconciler after that window. If both
+webhook delivery and client polling are absent, the wrapper has no scheduled reconciler to observe or store
+terminal state.
 
 ## Why do unknown and expired jobs return the same error?
 

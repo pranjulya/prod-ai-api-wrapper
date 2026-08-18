@@ -16,7 +16,7 @@ from app.errors import error_response
 from app.logging import log_event
 from app.schemas.jobs import JobStatus
 from app.services.jobs import get_job, get_job_id_by_response_id
-from app.services.responses import normalize_response
+from app.services.job_reconciliation import TERMINAL_STATUSES, apply_job_transition
 from app.services.retry import openai_request_id, retry_async
 from app.services.webhooks import (
     EventClaim,
@@ -39,15 +39,6 @@ EVENT_STATUSES = {
     "response.cancelled": JobStatus.CANCELLED,
     "response.incomplete": JobStatus.INCOMPLETE,
 }
-TERMINAL_STATUSES = {
-    JobStatus.COMPLETED,
-    JobStatus.FAILED,
-    JobStatus.CANCELLED,
-    JobStatus.INCOMPLETE,
-    JobStatus.EXPIRED,
-}
-
-
 async def _release_safely(redis, event_id: str, owner_token: str) -> None:
     try:
         await release_event(redis, event_id, owner_token)
@@ -152,17 +143,11 @@ async def receive_openai_webhook(request: Request):
                 await release_event(redis, event.id, owner_token)
                 claimed = False
                 raise HTTPException(status_code=503)
-            normalized = normalize_response(provider, record.correlation_id)
-            record = record.model_copy(
-                update={
-                    "status": JobStatus.COMPLETED,
-                    "model": normalized.model,
-                    "output_text": normalized.output_text,
-                    "usage": normalized.usage,
-                }
-            )
-        else:
-            record = record.model_copy(update={"status": target_status})
+        record = apply_job_transition(
+            record,
+            target_status,
+            provider=provider if target_status is JobStatus.COMPLETED else None,
+        )
 
         finalization = await finalize_event(redis, event.id, owner_token, record)
         if finalization is FinalizationResult.STALE:

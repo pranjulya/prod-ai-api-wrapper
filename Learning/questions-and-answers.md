@@ -86,8 +86,11 @@ the complete OpenAI response format.
 ## How should clients poll a background job?
 
 The status endpoint returns `202` while a job is pending or in progress and
-`200` for terminal states. Polling reads only Redis, so it does not create more
-OpenAI work or extend the job TTL.
+`200` for terminal states. Polling reads Redis first. For a non-terminal job with an OpenAI response ID,
+one caller per Redis cooldown may retrieve OpenAI and atomically store the
+result; webhooks remain the fast path. Polling never creates a second model
+response and does not extend the job's original expiry. OpenAI background responses are polled only during
+their roughly ten-minute provider window; this wrapper has no scheduled reconciler after that window.
 
 ## Why do unknown and expired jobs return the same error?
 

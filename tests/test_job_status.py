@@ -1,9 +1,11 @@
 import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AuthenticationError, RateLimitError
 from redis.exceptions import ConnectionError
 
 from app.main import create_app
@@ -11,6 +13,7 @@ from app.schemas.jobs import JobRecord, JobStatus
 from app.schemas.responses import Usage
 from app.services.job_reconciliation import claim_reconciliation
 from app.services.jobs import job_key
+from app.services.retry import retry_async as run_retry
 from conftest import FakeRedis
 
 
@@ -69,6 +72,39 @@ def completed_response():
 def install(monkeypatch, redis, openai):
     monkeypatch.setattr("app.main.create_redis", lambda url: redis)
     monkeypatch.setattr("app.main.create_openai_client", lambda settings: openai)
+
+
+def provider_error(kind, status_code=None):
+    if kind in (APIConnectionError, APITimeoutError):
+        return kind(request=None)
+    response = SimpleNamespace(status_code=status_code, headers={}, request=None)
+    return kind(
+        message="provider secret: prompt",
+        response=response,
+        body={"error": "secret"},
+    )
+
+
+def install_active_job(monkeypatch, outcomes):
+    redis = FakeRedis()
+    redis.values[job_key(JOB_ID)] = record(JobStatus.IN_PROGRESS).model_dump_json()
+    openai = FakeOpenAI(outcomes)
+    install(monkeypatch, redis, openai)
+
+    async def no_wait(seconds):
+        return None
+
+    async def immediate_retry(operation, *, operation_name, max_retries=2):
+        return await run_retry(
+            operation,
+            operation_name=operation_name,
+            max_retries=max_retries,
+            sleep=no_wait,
+            random_value=lambda: 0,
+        )
+
+    monkeypatch.setattr("app.api.responses.retry_async", immediate_retry)
+    return redis, openai
 
 
 def test_nonterminal_job_without_provider_id_returns_cached_202(monkeypatch):
@@ -210,3 +246,82 @@ def test_status_requires_authentication():
     with TestClient(create_app()) as client:
         response = client.get(f"/v1/responses/{JOB_ID}")
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        provider_error(APITimeoutError),
+        provider_error(APIConnectionError),
+        provider_error(RateLimitError, 429),
+        provider_error(APIStatusError, 503),
+    ],
+)
+def test_transient_retrieval_failure_returns_cached_202(monkeypatch, error):
+    redis, _ = install_active_job(monkeypatch, [error, error, error])
+    with TestClient(create_app()) as client:
+        response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
+    assert response.status_code == 202
+    assert response.json()["status"] == "in_progress"
+    assert JobRecord.model_validate_json(redis.values[job_key(JOB_ID)]).status is JobStatus.IN_PROGRESS
+
+
+def test_provider_404_becomes_safe_terminal_failure(monkeypatch):
+    redis, _ = install_active_job(monkeypatch, [provider_error(APIStatusError, 404)])
+    with TestClient(create_app()) as client:
+        response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
+    assert response.status_code == 200
+    assert response.json()["status"] == "failed"
+    assert response.json()["error"] == {
+        "code": "background_response_unavailable",
+        "message": "Background response is no longer available.",
+    }
+    assert "secret" not in response.text
+
+
+def test_provider_auth_failure_preserves_job_and_returns_503(monkeypatch):
+    redis, _ = install_active_job(monkeypatch, [provider_error(AuthenticationError, 401)])
+    with TestClient(create_app()) as client:
+        response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "upstream_unavailable"
+    assert JobRecord.model_validate_json(redis.values[job_key(JOB_ID)]).status is JobStatus.IN_PROGRESS
+
+
+def test_permanent_provider_4xx_preserves_job_and_returns_safe_500(monkeypatch):
+    redis, _ = install_active_job(monkeypatch, [provider_error(APIStatusError, 400)])
+    with TestClient(create_app()) as client:
+        response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
+    assert JobRecord.model_validate_json(redis.values[job_key(JOB_ID)]).status is JobStatus.IN_PROGRESS
+
+
+def test_reconciliation_redis_failure_returns_503(monkeypatch):
+    class EvalErrorRedis(FakeRedis):
+        async def eval(self, script, numkeys, *args):
+            raise ConnectionError("offline")
+
+    redis = EvalErrorRedis()
+    redis.values[job_key(JOB_ID)] = record(JobStatus.IN_PROGRESS).model_dump_json()
+    install(monkeypatch, redis, FakeOpenAI([completed_response()]))
+    with TestClient(create_app()) as client:
+        response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "upstream_unavailable"
+
+
+def test_poll_reconciliation_logs_exclude_sensitive_values(monkeypatch, captured_events):
+    install_active_job(monkeypatch, [completed_response()])
+    with TestClient(create_app()) as client:
+        response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
+    assert response.status_code == 200
+    serialized = json.dumps(captured_events)
+    for forbidden in (
+        "resp_private",
+        "finished",
+        "test-openai-key",
+        "test-webhook-secret",
+        "test-wrapper-key",
+    ):
+        assert forbidden not in serialized

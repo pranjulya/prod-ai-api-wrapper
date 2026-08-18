@@ -1,4 +1,6 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,6 +9,7 @@ from redis.exceptions import ConnectionError
 from app.main import create_app
 from app.schemas.jobs import JobRecord, JobStatus
 from app.schemas.responses import Usage
+from app.services.job_reconciliation import claim_reconciliation
 from app.services.jobs import job_key
 from conftest import FakeRedis
 
@@ -14,9 +17,22 @@ from conftest import FakeRedis
 JOB_ID = "job_00000000-0000-4000-8000-000000000000"
 
 
-class FakeOpenAI:
-    def __init__(self):
+class FakeResponses:
+    def __init__(self, outcomes):
+        self.outcomes = iter(outcomes)
         self.calls = 0
+
+    async def retrieve(self, response_id):
+        self.calls += 1
+        outcome = next(self.outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+class FakeOpenAI:
+    def __init__(self, outcomes=()):
+        self.responses = FakeResponses(outcomes)
 
     async def close(self):
         pass
@@ -39,25 +55,88 @@ def headers():
     return {"Authorization": "Bearer test-wrapper-key", "X-Correlation-ID": "poll-correlation"}
 
 
-@pytest.mark.parametrize("status", [JobStatus.PENDING, JobStatus.IN_PROGRESS])
-def test_active_job_returns_202(monkeypatch, status):
-    redis = FakeRedis()
-    redis.values[job_key(JOB_ID)] = record(status).model_dump_json()
-    openai = FakeOpenAI()
+def completed_response():
+    return SimpleNamespace(
+        id="resp_private",
+        _request_id="req_poll",
+        status="completed",
+        model="gpt-5-mini",
+        output_text="finished",
+        usage=SimpleNamespace(input_tokens=4, output_tokens=2, total_tokens=6),
+    )
+
+
+def install(monkeypatch, redis, openai):
     monkeypatch.setattr("app.main.create_redis", lambda url: redis)
     monkeypatch.setattr("app.main.create_openai_client", lambda settings: openai)
+
+
+def test_nonterminal_job_without_provider_id_returns_cached_202(monkeypatch):
+    redis = FakeRedis()
+    cached = record(JobStatus.PENDING).model_copy(update={"openai_response_id": None})
+    redis.values[job_key(JOB_ID)] = cached.model_dump_json()
+    openai = FakeOpenAI([])
+    install(monkeypatch, redis, openai)
 
     with TestClient(create_app()) as client:
         response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
 
     assert response.status_code == 202
-    assert response.json()["status"] == status
+    assert openai.responses.calls == 0
+
+
+def test_poll_recovers_completed_job(monkeypatch):
+    redis = FakeRedis()
+    redis.values[job_key(JOB_ID)] = record(JobStatus.IN_PROGRESS).model_dump_json()
+    openai = FakeOpenAI([completed_response()])
+    install(monkeypatch, redis, openai)
+    with TestClient(create_app()) as client:
+        response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert response.json()["output_text"] == "finished"
+    assert response.json()["usage"]["total_tokens"] == 6
     assert "openai_response_id" not in response.json()
-    assert "model" not in response.json()
-    assert "output_text" not in response.json()
-    assert "usage" not in response.json()
-    assert response.headers["X-Correlation-ID"] == "poll-correlation"
-    assert openai.calls == 0
+    assert openai.responses.calls == 1
+
+
+@pytest.mark.parametrize(
+    ("provider_status", "local_status"),
+    [("queued", "pending"), ("in_progress", "in_progress")],
+)
+def test_poll_keeps_provider_nonterminal_status_at_202(monkeypatch, provider_status, local_status):
+    redis = FakeRedis()
+    redis.values[job_key(JOB_ID)] = record(JobStatus.IN_PROGRESS).model_dump_json()
+    openai = FakeOpenAI([SimpleNamespace(status=provider_status)])
+    install(monkeypatch, redis, openai)
+    with TestClient(create_app()) as client:
+        response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
+    assert response.status_code == 202
+    assert response.json()["status"] == local_status
+
+
+def test_poll_returns_cached_job_when_reconciliation_is_already_claimed(monkeypatch):
+    redis = FakeRedis()
+    cached = record(JobStatus.IN_PROGRESS)
+    redis.values[job_key(JOB_ID)] = cached.model_dump_json()
+    asyncio.run(claim_reconciliation(redis, JOB_ID, "other-owner", 100))
+    openai = FakeOpenAI([completed_response()])
+    install(monkeypatch, redis, openai)
+    with TestClient(create_app()) as client:
+        response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
+    assert response.status_code == 202
+    assert openai.responses.calls == 0
+
+
+def test_terminal_job_does_not_retrieve_provider(monkeypatch):
+    redis = FakeRedis()
+    redis.values[job_key(JOB_ID)] = record(JobStatus.COMPLETED).model_dump_json()
+    openai = FakeOpenAI([completed_response()])
+    install(monkeypatch, redis, openai)
+    with TestClient(create_app()) as client:
+        response = client.get(f"/v1/responses/{JOB_ID}", headers=headers())
+    assert response.status_code == 200
+    assert openai.responses.calls == 0
 
 
 @pytest.mark.parametrize("status", [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.INCOMPLETE])

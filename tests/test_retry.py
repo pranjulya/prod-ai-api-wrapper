@@ -118,6 +118,25 @@ def test_honors_retry_after_header():
     assert sleeps == [3.0]
 
 
+def test_caps_oversized_retry_after_header():
+    response = _response(429, {"retry-after": "3600"})
+    sleeps = []
+    calls = 0
+
+    async def operation():
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise _error(RateLimitError, response=response)
+        return "ok"
+
+    async def sleep(delay):
+        sleeps.append(delay)
+
+    assert asyncio.run(retry_async(operation, operation_name="retrieve", sleep=sleep)) == "ok"
+    assert sleeps == [5.0, 5.0]
+
+
 @pytest.mark.parametrize(
     ("error", "expected_category"),
     [

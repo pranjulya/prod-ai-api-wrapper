@@ -148,5 +148,5 @@ def test_poll_and_webhook_finalizers_keep_first_terminal_state():
 
 
 def test_processing_ttl_covers_all_provider_attempts():
-    assert processing_ttl(30) == 100
+    assert processing_ttl(30) == 110
     assert processing_ttl(5) == 60

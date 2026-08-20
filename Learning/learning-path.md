@@ -29,8 +29,8 @@ working service.
     Redis, and update terminal jobs exactly once.
 15. **Observability (complete)** — emit safe structured application and Uvicorn
     events with correlation IDs, durations, retry counts, and error categories.
-16. **Testing** — automate unit, integration, and contract checks.
-17. **Local operations** — complete Docker Compose and smoke-test workflows.
+16. **Testing (complete)** — automate unit, integration, and contract checks.
+17. **Local operations (complete)** — Docker Compose with Redis 7 and a documented local run.
 
 ## Vocabulary
 

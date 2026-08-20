@@ -4,7 +4,7 @@ This is the wrapper's public contract. Clients use only the fields and endpoints
 
 ## Common rules
 
-All request and response bodies are JSON. Unknown request fields are rejected. All authenticated endpoints require:
+All request and response bodies are JSON. Unknown request fields are rejected. Authenticated endpoints require:
 
 ```http
 Authorization: Bearer <wrapper-api-key>
@@ -13,7 +13,7 @@ X-Correlation-ID: <optional-client-id>
 
 Creation endpoints also require `Idempotency-Key: <unique-client-key>`.
 
-`X-Correlation-ID` must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`. If omitted, the wrapper generates one and returns it in the response header. `/webhooks/openai` does not use wrapper bearer authentication; it accepts only a valid OpenAI webhook signature.
+`X-Correlation-ID` must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`. If omitted, the wrapper generates one and returns it in the response header. `/health/live` and `/health/ready` do not use wrapper bearer authentication. `/webhooks/openai` (including a trailing slash) does not use wrapper bearer authentication; it accepts only a valid OpenAI webhook signature.
 
 ## Structured logging
 
@@ -67,8 +67,8 @@ The wrapper sends only these fields to OpenAI. It never accepts client-supplied 
 | `POST /v1/responses/background` | Bearer key + idempotency key | `202` | Create a background response and return a wrapper job. |
 | `GET /v1/responses/{job_id}` | Bearer key | `202` or `200` | Read a background job. |
 | `POST /webhooks/openai` | OpenAI signature | `200` | Accept a verified OpenAI event. |
-| `GET /health/live` | Bearer key | `200` | Confirm the FastAPI process is running. |
-| `GET /health/ready` | Bearer key | `200` or `503` | Confirm required dependencies are available. |
+| `GET /health/live` | None | `200` | Confirm the FastAPI process is running. |
+| `GET /health/ready` | None | `200` or `503` | Confirm required dependencies are available. |
 
 ### Synchronous response
 
@@ -144,7 +144,7 @@ Every error uses this shape:
 | `400` | `invalid_request` or `unsupported_model` | The JSON is syntactically valid but violates this contract. |
 | `401` | `authentication_failed` or `invalid_webhook_signature` | Authentication or signature verification failed. |
 | `404` | `job_not_found` | The requested job does not exist or has expired. |
-| `409` | `idempotency_key_reused` | An idempotency key was reused with a different request. |
+| `409` | `idempotency_key_reused` or `idempotency_in_progress` | An idempotency key was reused with a different request, or the original request is still running. |
 | `413` | `request_too_large` | The webhook body exceeds 1 MiB. |
 | `422` | `validation_error` | A field fails type, presence, or size validation. |
 | `429` | `rate_limit_exceeded` | The wrapper rate limit was exceeded. |

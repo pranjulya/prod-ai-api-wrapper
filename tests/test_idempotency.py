@@ -54,4 +54,35 @@ def test_missing_key_is_rejected(monkeypatch):
     with TestClient(create_app()) as http:
         result = http.post("/v1/responses", headers={"Authorization": "Bearer test-wrapper-key"}, json={"input": "Hi"})
     assert result.status_code == 422
+    assert result.json()["error"]["code"] == "validation_error"
     assert client.responses.calls == 0
+
+
+def test_timeout_keeps_claim_so_retry_does_not_call_provider_again(monkeypatch):
+    from openai import APITimeoutError
+
+    class TimeoutThenOk:
+        def __init__(self):
+            self.calls = 0
+
+        async def create(self, **kwargs):
+            self.calls += 1
+            raise APITimeoutError(request=None)
+
+    class FakeTimeoutOpenAI:
+        def __init__(self):
+            self.responses = TimeoutThenOk()
+
+        async def close(self):
+            pass
+
+    client = FakeTimeoutOpenAI()
+    monkeypatch.setattr("app.main.create_openai_client", lambda settings: client)
+    headers_value = headers()
+    with TestClient(create_app()) as http:
+        first = http.post("/v1/responses", headers=headers_value, json={"input": "Hi"})
+        second = http.post("/v1/responses", headers=headers_value, json={"input": "Hi"})
+    assert first.status_code == 504
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "idempotency_in_progress"
+    assert client.responses.calls == 3

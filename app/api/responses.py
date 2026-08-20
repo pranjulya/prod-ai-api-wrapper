@@ -146,7 +146,7 @@ async def create_response(payload: ResponsesRequest, request: Request, idempoten
             key=key,
             request_hash_value=fingerprint,
             correlation_id=request.state.correlation_id,
-            ttl_seconds=request.app.state.settings.idempotency_ttl_seconds,
+            ttl_seconds=processing_ttl(request.app.state.settings.openai_timeout_seconds),
         )
         if result.status is ClaimStatus.EXISTING:
             if result.record is None or result.record.request_hash != fingerprint:
@@ -170,7 +170,6 @@ async def create_response(payload: ResponsesRequest, request: Request, idempoten
         _log_redis_failure("create")
         raise HTTPException(status_code=503) from None
     except APITimeoutError:
-        await delete(request.app.state.redis, key)
         raise HTTPException(status_code=504) from None
     except (APIConnectionError, AuthenticationError, RateLimitError):
         await delete(request.app.state.redis, key)
@@ -226,7 +225,7 @@ async def create_background_response(
             key=key,
             request_hash_value=fingerprint,
             correlation_id=request.state.correlation_id,
-            ttl_seconds=settings.idempotency_ttl_seconds,
+            ttl_seconds=processing_ttl(settings.openai_timeout_seconds),
         )
         if result.status is ClaimStatus.EXISTING:
             if result.record is None or result.record.request_hash != fingerprint:
@@ -253,7 +252,6 @@ async def create_background_response(
         _log_redis_failure("background_create")
         raise HTTPException(status_code=503) from None
     except APITimeoutError:
-        await _release_background(request.app.state.redis, key, job_id)
         raise HTTPException(status_code=504) from None
     except (APIConnectionError, AuthenticationError, RateLimitError):
         await _release_background(request.app.state.redis, key, job_id)

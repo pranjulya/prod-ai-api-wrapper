@@ -4,7 +4,7 @@ import redis
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from tests.conftest import FakeRedis
+from conftest import FakeRedis
 
 
 def auth_headers():

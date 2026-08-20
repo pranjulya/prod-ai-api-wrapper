@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.schemas.jobs import JobRecord, JobStatus
 from app.services.jobs import job_key
+from app.services.job_reconciliation import JobWriteResult, write_reconciled_job
 from app.services.webhooks import (
     PROCESSED_EVENT_TTL_SECONDS,
     EventClaim,
@@ -119,6 +120,33 @@ def test_first_terminal_finalization_wins_across_different_events():
     assert redis.values[event_key("evt_completed")] == "processed"
 
 
+def test_poll_and_webhook_finalizers_keep_first_terminal_state():
+    for poll_first in (True, False):
+        redis = FakeRedis()
+        active = record(JobStatus.IN_PROGRESS)
+        redis.values[job_key(active.id)] = active.model_dump_json()
+        redis.values[event_key("evt-race")] = "processing:webhook-owner"
+        polled = active.model_copy(update={"status": JobStatus.FAILED})
+        webhook = active.model_copy(update={"status": JobStatus.COMPLETED, "output_text": "done"})
+
+        if poll_first:
+            assert asyncio.run(write_reconciled_job(redis, polled)) is JobWriteResult.UPDATED
+            assert (
+                asyncio.run(finalize_event(redis, "evt-race", "webhook-owner", webhook))
+                is FinalizationResult.ALREADY_TERMINAL
+            )
+            expected = JobStatus.FAILED
+        else:
+            assert (
+                asyncio.run(finalize_event(redis, "evt-race", "webhook-owner", webhook))
+                is FinalizationResult.UPDATED
+            )
+            assert asyncio.run(write_reconciled_job(redis, polled)) is JobWriteResult.ALREADY_TERMINAL
+            expected = JobStatus.COMPLETED
+
+        assert JobRecord.model_validate_json(redis.values[job_key(active.id)]).status is expected
+
+
 def test_processing_ttl_covers_all_provider_attempts():
-    assert processing_ttl(30) == 100
+    assert processing_ttl(30) == 110
     assert processing_ttl(5) == 60

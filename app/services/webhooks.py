@@ -3,6 +3,7 @@ from enum import IntEnum, StrEnum
 
 from app.schemas.jobs import JobRecord
 from app.services.jobs import job_key, remaining_ttl
+from app.services.retry import MAX_RETRY_DELAY_SECONDS
 
 
 PROCESSED_EVENT_TTL_SECONDS = 259_200
@@ -49,7 +50,7 @@ def event_key(event_id: str) -> str:
 
 
 def processing_ttl(openai_timeout_seconds: int) -> int:
-    return max(60, 3 * openai_timeout_seconds + 10)
+    return max(60, 3 * openai_timeout_seconds + 2 * MAX_RETRY_DELAY_SECONDS + 10)
 
 
 def _processing_value(owner_token: str) -> str:

@@ -16,6 +16,11 @@ class JobStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class BackgroundJobError(BaseModel):
+    code: str
+    message: str
+
+
 class JobRecord(BaseModel):
     id: str
     status: JobStatus
@@ -27,6 +32,7 @@ class JobRecord(BaseModel):
     model: str | None = None
     output_text: str | None = None
     usage: Usage | None = None
+    error: BackgroundJobError | None = None
 
 
 class BackgroundJobResponse(BaseModel):
@@ -39,3 +45,4 @@ class BackgroundJobResponse(BaseModel):
     model: str | None = None
     output_text: str | None = None
     usage: Usage | None = None
+    error: BackgroundJobError | None = None

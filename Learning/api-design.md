@@ -103,6 +103,8 @@ The wrapper sends only these fields to OpenAI. It never accepts client-supplied 
 
 `GET /v1/responses/{job_id}` returns `202 Accepted` for `pending` or `in_progress`, `200 OK` for `completed`, `404 Not Found` after expiry or for an unknown job, and `200 OK` with a terminal `failed`, `cancelled`, or `incomplete` status for other completed work.
 
+Polling reads Redis first. For a non-terminal job with an OpenAI response ID, one caller per Redis per-job cooldown may retrieve OpenAI and atomically store the result; webhooks remain the fast path. Terminal and provider-ID-less jobs remain Redis-only. Transient retrieval failures return the cached `202` response, while a provider `404` stores and returns `failed` with the safe optional error object. Polling never creates a second model response and does not extend the job's original expiry. OpenAI retains background responses for roughly ten minutes; this wrapper does not enforce that retention as a polling cutoff and has no scheduled reconciler. If both webhook delivery and client polling are absent, the wrapper has no scheduled worker to observe or store terminal state.
+
 A completed job includes the normalized result fields:
 
 ```json

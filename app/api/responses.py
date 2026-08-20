@@ -1,4 +1,5 @@
 import logging
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -9,11 +10,21 @@ from redis.exceptions import RedisError
 from app.errors import IdempotencyConflictError, JobNotFoundError, UnsupportedModelError
 from app.logging import log_event
 from app.schemas.responses import ResponsesRequest, ResponsesResponse
-from app.schemas.jobs import BackgroundJobResponse, JobRecord, JobStatus
+from app.schemas.jobs import BackgroundJobError, BackgroundJobResponse, JobRecord, JobStatus
+from app.services.job_reconciliation import (
+    TERMINAL_STATUSES,
+    JobWriteResult,
+    apply_job_transition,
+    claim_reconciliation,
+    finish_reconciliation,
+    transition_from_provider,
+    write_reconciled_job,
+)
 from app.services.jobs import create_job, delete_job, get_job, update_job_with_response_id
 from app.services.retry import openai_request_id, retry_async
 from app.services.idempotency import ClaimStatus, claim, delete, redis_key, request_hash, store
 from app.services.responses import normalize_response
+from app.services.webhooks import processing_ttl
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -56,6 +67,65 @@ def _log_redis_failure(operation: str) -> None:
         status_code=503,
         error_category="redis",
     )
+
+
+async def _reconcile_background_job(record: JobRecord, request: Request) -> JobRecord:
+    if record.status in TERMINAL_STATUSES or record.openai_response_id is None:
+        return record
+    redis = request.app.state.redis
+    owner_token = secrets.token_hex(16)
+    if not await claim_reconciliation(
+        redis,
+        record.id,
+        owner_token,
+        processing_ttl(request.app.state.settings.openai_timeout_seconds),
+    ):
+        return record
+    try:
+        log_event(logger, logging.INFO, "openai_request_started", operation="retrieve", retry_count=0)
+        provider = await retry_async(
+            lambda: request.app.state.openai.responses.retrieve(record.openai_response_id),
+            operation_name="retrieve",
+        )
+        request.state.openai_request_id = openai_request_id(provider)
+        candidate = transition_from_provider(record, provider)
+        if candidate is not None:
+            result = await write_reconciled_job(redis, candidate)
+            if candidate.status is JobStatus.COMPLETED and result is JobWriteResult.UPDATED:
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "job_completed",
+                    correlation_id=record.correlation_id,
+                    operation="retrieve",
+                    job_id=record.id,
+                    openai_request_id=openai_request_id(provider),
+                )
+    except (APITimeoutError, APIConnectionError, RateLimitError):
+        pass
+    except AuthenticationError:
+        raise HTTPException(status_code=503) from None
+    except APIStatusError as error:
+        if error.status_code == 404:
+            candidate = apply_job_transition(
+                record,
+                JobStatus.FAILED,
+                error=BackgroundJobError(
+                    code="background_response_unavailable",
+                    message="Background response is no longer available.",
+                ),
+            )
+            await write_reconciled_job(redis, candidate)
+        elif error.status_code >= 500:
+            pass
+        else:
+            raise
+    finally:
+        await finish_reconciliation(redis, record.id, owner_token)
+    updated = await get_job(redis, record.id)
+    if updated is None:
+        raise JobNotFoundError()
+    return updated
 
 
 @router.post("/responses", response_model=ResponsesResponse)
@@ -228,9 +298,10 @@ async def get_background_response(job_id: str, request: Request, response: Respo
         raise JobNotFoundError()
     try:
         record = await get_job(request.app.state.redis, job_id)
+        if record is None or record.status is JobStatus.EXPIRED:
+            raise JobNotFoundError()
+        record = await _reconcile_background_job(record, request)
     except RedisError:
         raise HTTPException(status_code=503) from None
-    if record is None or record.status is JobStatus.EXPIRED:
-        raise JobNotFoundError()
     response.status_code = 202 if record.status in {JobStatus.PENDING, JobStatus.IN_PROGRESS} else 200
     return BackgroundJobResponse.model_validate(record, from_attributes=True)

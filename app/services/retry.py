@@ -22,6 +22,7 @@ from app.logging import log_event
 
 
 logger = logging.getLogger(__name__)
+MAX_RETRY_DELAY_SECONDS = 5
 
 
 def openai_request_id(value) -> str | None:
@@ -105,4 +106,4 @@ async def retry_async(
             delay = _retry_after(error)
             if delay is None:
                 delay = (0.1 * (2**attempt)) + (0.1 * random_value())
-            await sleep(delay)
+            await sleep(min(delay, MAX_RETRY_DELAY_SECONDS))

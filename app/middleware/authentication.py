@@ -10,9 +10,16 @@ from app.logging import log_event
 logger = logging.getLogger(__name__)
 
 
+EXEMPT_PATHS = {"/webhooks/openai", "/health/live", "/health/ready"}
+
+
+def _normalized_path(path: str) -> str:
+    return path.rstrip("/") or "/"
+
+
 class AuthenticationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        if request.url.path == "/webhooks/openai":
+        if _normalized_path(request.url.path) in EXEMPT_PATHS:
             return await call_next(request)
         scheme, _, credential = request.headers.get("Authorization", "").partition(" ")
         if scheme != "Bearer" or not credential or not credential.isascii() or not hmac.compare_digest(

@@ -31,6 +31,7 @@ async def http_exception_handler(request, exc: StarletteHTTPException) -> JSONRe
     codes = {
         404: "not_found",
         405: "method_not_allowed",
+        422: "validation_error",
         429: "rate_limit_exceeded",
         503: "upstream_unavailable",
         504: "upstream_timeout",
@@ -41,8 +42,9 @@ async def http_exception_handler(request, exc: StarletteHTTPException) -> JSONRe
         codes[409] = exc.code
     elif isinstance(exc, JobNotFoundError):
         codes[404] = "job_not_found"
+    message = "Request validation failed." if exc.status_code == 422 else "Request failed."
     return error_response(
-        exc.status_code, codes.get(exc.status_code, "http_error"), "Request failed.", request.state.correlation_id, exc.headers
+        exc.status_code, codes.get(exc.status_code, "http_error"), message, request.state.correlation_id, exc.headers
     )
 
 

@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+.worktrees
+.pytest_cache
+.superpowers
+__pycache__
+*.pyc
+.env
+dist
+build
+*.egg-info
+Learning
+docs
+tests

@@ -13,9 +13,13 @@ EXEMPT_PATHS = {"/health/live", "/health/ready", "/webhooks/openai"}
 logger = logging.getLogger(__name__)
 
 
+def _normalized_path(path: str) -> str:
+    return path.rstrip("/") or "/"
+
+
 class RateLimitingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        if request.url.path in EXEMPT_PATHS:
+        if _normalized_path(request.url.path) in EXEMPT_PATHS:
             return await call_next(request)
         try:
             result = await check_rate_limit(

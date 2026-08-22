@@ -11,7 +11,7 @@ pytestmark = pytest.mark.filterwarnings(
 
 def test_liveness_reports_a_running_process():
     with TestClient(create_app()) as client:
-        response = client.get("/health/live", headers={"Authorization": "Bearer test-wrapper-key"})
+        response = client.get("/health/live")
 
     assert response.status_code == 200
     assert response.json() == {"status": "live"}

@@ -46,3 +46,15 @@ async def _claim_get_store_delete():
     assert redis.calls[-1][3] == 120
     await delete(redis, key)
     assert await get(redis, key) is None
+
+
+def test_claim_records_the_provided_ttl():
+    asyncio.run(_claim_records_the_provided_ttl())
+
+
+async def _claim_records_the_provided_ttl():
+    redis = FakeRedis()
+    key = redis_key("ttl-key")
+    await claim(redis, key=key, request_hash_value="hash", correlation_id="corr", ttl_seconds=100)
+    assert redis.calls[0][2] is True
+    assert redis.calls[0][3] == 100

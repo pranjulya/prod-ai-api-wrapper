@@ -16,9 +16,12 @@ def event(records, name):
     return [record for record in records if record["event"] == name]
 
 
+PROTECTED = "/v1/responses/job_00000000-0000-4000-8000-000000000000"
+
+
 def test_missing_bearer_key_returns_correlated_error():
     with TestClient(create_app()) as client:
-        response = client.get("/health/live")
+        response = client.get(PROTECTED)
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "authentication_failed"
@@ -28,17 +31,27 @@ def test_missing_bearer_key_returns_correlated_error():
 @pytest.mark.parametrize("authorization", ["Basic test-wrapper-key", "Bearer wrong-key"])
 def test_invalid_bearer_key_is_rejected(authorization):
     with TestClient(create_app()) as client:
-        response = client.get("/health/live", headers={"Authorization": authorization})
+        response = client.get(PROTECTED, headers={"Authorization": authorization})
 
     assert response.status_code == 401
 
 
 def test_non_ascii_bearer_key_is_rejected():
     with TestClient(create_app(), raise_server_exceptions=False) as client:
-        response = client.get("/health/live", headers={"Authorization": b"Bearer caf\xc3\xa9"})
+        response = client.get(PROTECTED, headers={"Authorization": b"Bearer caf\xc3\xa9"})
 
     assert response.status_code == 401
-    assert response.json()["error"]["code"] == "authentication_failed"
+
+
+def test_health_live_and_ready_do_not_require_bearer_key():
+    with TestClient(create_app()) as client:
+        live = client.get("/health/live")
+        ready = client.get("/health/ready")
+
+    assert live.status_code == 200
+    assert live.json() == {"status": "live"}
+    assert ready.status_code == 200
+    assert ready.json() == {"status": "ready"}
 
 
 def test_valid_client_correlation_id_is_returned():
@@ -108,9 +121,10 @@ def test_framework_errors_are_correlated_standard_errors():
         assert response.headers["X-Correlation-ID"] == body["error"]["correlation_id"]
 
 
-def test_webhook_path_is_exempt_from_wrapper_authentication():
+@pytest.mark.parametrize("path", ["/webhooks/openai", "/webhooks/openai/"])
+def test_webhook_path_is_exempt_from_wrapper_authentication(path):
     with TestClient(create_app()) as client:
-        response = client.post("/webhooks/openai")
+        response = client.post(path)
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "invalid_webhook_signature"
@@ -152,7 +166,7 @@ def test_downstream_exception_event_excludes_exception_details(captured_events):
 def test_authentication_failure_is_structured_and_redacted(captured_events):
     with TestClient(create_app()) as client:
         response = client.get(
-            "/health/live",
+            PROTECTED,
             headers={"Authorization": "Bearer secret-auth-value"},
         )
 

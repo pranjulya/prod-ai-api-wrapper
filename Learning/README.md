@@ -31,7 +31,8 @@ Redis, and exposes synchronous and background response workflows.
 
 Read [the learning path](learning-path.md) in order. Record design questions
 and answers in [questions and answers](questions-and-answers.md) as each phase
-adds a new concern.
+adds a new concern. For interview prep, use the printable
+[interview study guide](interview-study-guide.pdf).
 
 Phase 2 defines the stable [API contract](api-design.md) before application
 code is introduced.

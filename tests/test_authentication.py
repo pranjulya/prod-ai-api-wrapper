@@ -1,11 +1,10 @@
-import uuid
 import json
+import uuid
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore:Using `httpx` with `starlette.testclient` is deprecated"

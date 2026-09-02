@@ -5,7 +5,6 @@ from app.schemas.jobs import JobRecord
 from app.services.jobs import job_key, remaining_ttl
 from app.services.retry import MAX_RETRY_DELAY_SECONDS
 
-
 PROCESSED_EVENT_TTL_SECONDS = 259_200
 RELEASE_EVENT_SCRIPT = """-- release-webhook-event
 if redis.call("GET", KEYS[1]) ~= ARGV[1] then return 0 end

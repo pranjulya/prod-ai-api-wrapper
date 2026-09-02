@@ -9,8 +9,9 @@ from redis.exceptions import RedisError
 
 from app.errors import IdempotencyConflictError, JobNotFoundError, UnsupportedModelError
 from app.logging import log_event
-from app.schemas.responses import ResponsesRequest, ResponsesResponse
 from app.schemas.jobs import BackgroundJobError, BackgroundJobResponse, JobRecord, JobStatus
+from app.schemas.responses import ResponsesRequest, ResponsesResponse
+from app.services.idempotency import ClaimStatus, claim, delete, redis_key, request_hash, store
 from app.services.job_reconciliation import (
     TERMINAL_STATUSES,
     JobWriteResult,
@@ -21,9 +22,8 @@ from app.services.job_reconciliation import (
     write_reconciled_job,
 )
 from app.services.jobs import create_job, delete_job, get_job, update_job_with_response_id
-from app.services.retry import openai_request_id, retry_async
-from app.services.idempotency import ClaimStatus, claim, delete, redis_key, request_hash, store
 from app.services.responses import normalize_response
+from app.services.retry import openai_request_id, retry_async
 from app.services.webhooks import processing_ttl
 
 router = APIRouter()

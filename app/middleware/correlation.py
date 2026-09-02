@@ -3,12 +3,11 @@ import re
 import time
 import uuid
 
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.errors import error_response, http_exception_handler
 from app.logging import bind_correlation_id, log_event, reset_correlation_id
-
 
 logger = logging.getLogger(__name__)
 CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")

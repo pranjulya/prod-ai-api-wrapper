@@ -1,6 +1,8 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
+from conftest import FakeRedis
+
 from app.schemas.jobs import JobRecord, JobStatus
 from app.services import jobs as jobs_service
 from app.services.jobs import (
@@ -10,7 +12,6 @@ from app.services.jobs import (
     job_key,
     update_job,
 )
-from conftest import FakeRedis
 
 
 def test_job_create_update_delete():

@@ -1,10 +1,10 @@
 from concurrent.futures import ThreadPoolExecutor
 
 import redis
+from conftest import FakeRedis
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from conftest import FakeRedis
 
 
 def auth_headers():

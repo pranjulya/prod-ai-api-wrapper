@@ -6,7 +6,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.errors import error_response
 from app.logging import log_event
 
-
 logger = logging.getLogger(__name__)
 
 

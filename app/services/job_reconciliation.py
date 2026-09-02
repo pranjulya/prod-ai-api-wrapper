@@ -5,7 +5,6 @@ from app.schemas.jobs import BackgroundJobError, JobRecord, JobStatus
 from app.services.jobs import job_key, remaining_ttl
 from app.services.responses import normalize_response
 
-
 TERMINAL_STATUSES = frozenset(
     {
         JobStatus.COMPLETED,

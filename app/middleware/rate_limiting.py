@@ -8,7 +8,6 @@ from app.errors import error_response
 from app.logging import log_event
 from app.services.rate_limit import check_rate_limit
 
-
 EXEMPT_PATHS = {"/health/live", "/health/ready", "/webhooks/openai"}
 logger = logging.getLogger(__name__)
 

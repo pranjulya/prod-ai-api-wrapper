@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 try:
-    from openai import APIConnectionError, APITimeoutError, APIStatusError, AuthenticationError, RateLimitError
+    from openai import APIConnectionError, APIStatusError, APITimeoutError, AuthenticationError, RateLimitError
 except ImportError:  # pragma: no cover - dependency is required at runtime
     APIConnectionError = APITimeoutError = APIStatusError = AuthenticationError = RateLimitError = ()
     _OPENAI_ERROR_TYPES = ()
@@ -19,7 +19,6 @@ else:
     )
 
 from app.logging import log_event
-
 
 logger = logging.getLogger(__name__)
 MAX_RETRY_DELAY_SECONDS = 5

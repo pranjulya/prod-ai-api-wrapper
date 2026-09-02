@@ -2,11 +2,11 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from conftest import FakeRedis
 from fastapi.testclient import TestClient
 from redis.exceptions import ConnectionError
 
 from app.main import create_app
-from conftest import FakeRedis
 
 
 class FakeResponses:

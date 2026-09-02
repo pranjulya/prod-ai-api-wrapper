@@ -2,7 +2,6 @@ import os
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
-
 LOG_LEVELS = frozenset({"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"})
 
 

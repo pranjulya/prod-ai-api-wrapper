@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from urllib.parse import urlsplit
 
-
 ALLOWED_FIELDS = frozenset(
     {
         "correlation_id",

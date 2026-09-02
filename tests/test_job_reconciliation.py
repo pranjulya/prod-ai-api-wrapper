@@ -2,6 +2,8 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+from conftest import FakeRedis
+
 from app.schemas.jobs import BackgroundJobError, BackgroundJobResponse, JobRecord, JobStatus
 from app.services.job_reconciliation import (
     RECONCILIATION_COOLDOWN_SECONDS,
@@ -14,7 +16,6 @@ from app.services.job_reconciliation import (
     write_reconciled_job,
 )
 from app.services.jobs import job_key
-from conftest import FakeRedis
 
 
 def record(status=JobStatus.IN_PROGRESS):

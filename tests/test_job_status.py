@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
+from conftest import FakeRedis
 from fastapi.testclient import TestClient
 from openai import APIConnectionError, APIStatusError, APITimeoutError, AuthenticationError, RateLimitError
 from redis.exceptions import ConnectionError
@@ -14,8 +15,6 @@ from app.schemas.responses import Usage
 from app.services.job_reconciliation import claim_reconciliation
 from app.services.jobs import job_key
 from app.services.retry import retry_async as run_retry
-from conftest import FakeRedis
-
 
 JOB_ID = "job_00000000-0000-4000-8000-000000000000"
 

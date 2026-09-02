@@ -15,8 +15,8 @@ from redis.exceptions import RedisError
 from app.errors import error_response
 from app.logging import log_event
 from app.schemas.jobs import JobStatus
-from app.services.jobs import get_job, get_job_id_by_response_id
 from app.services.job_reconciliation import TERMINAL_STATUSES, apply_job_transition
+from app.services.jobs import get_job, get_job_id_by_response_id
 from app.services.retry import openai_request_id, retry_async
 from app.services.webhooks import (
     EventClaim,
@@ -27,7 +27,6 @@ from app.services.webhooks import (
     processing_ttl,
     release_event,
 )
-
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

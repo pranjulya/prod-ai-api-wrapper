@@ -17,7 +17,6 @@ from app.middleware.authentication import AuthenticationMiddleware
 from app.middleware.correlation import CorrelationMiddleware
 from app.middleware.rate_limiting import RateLimitingMiddleware
 
-
 configure_logging(os.getenv("LOG_LEVEL", "INFO"))
 
 

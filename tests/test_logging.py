@@ -6,7 +6,6 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app.logging import (
     JsonFormatter,
     bind_correlation_id,
@@ -14,6 +13,7 @@ from app.logging import (
     log_event,
     reset_correlation_id,
 )
+from app.main import create_app
 
 
 def decode(record: logging.LogRecord) -> dict:

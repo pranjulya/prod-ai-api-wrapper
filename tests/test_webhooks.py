@@ -3,17 +3,16 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
+from conftest import FakeRedis
 from fastapi.testclient import TestClient
 from openai import APIConnectionError, APITimeoutError, InvalidWebhookSignatureError
 from redis.exceptions import ConnectionError
 
+from app.api.webhooks import MAX_WEBHOOK_BODY_BYTES
 from app.main import create_app
 from app.schemas.jobs import JobRecord, JobStatus
 from app.services.jobs import job_key, response_job_key
-from app.api.webhooks import MAX_WEBHOOK_BODY_BYTES
 from app.services.webhooks import event_key
-from conftest import FakeRedis
-
 
 JOB_ID = "job_00000000-0000-4000-8000-000000000000"
 SIGNED_HEADERS = {

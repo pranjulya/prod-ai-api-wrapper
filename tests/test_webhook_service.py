@@ -1,9 +1,11 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
+from conftest import FakeRedis
+
 from app.schemas.jobs import JobRecord, JobStatus
-from app.services.jobs import job_key
 from app.services.job_reconciliation import JobWriteResult, write_reconciled_job
+from app.services.jobs import job_key
 from app.services.webhooks import (
     PROCESSED_EVENT_TTL_SECONDS,
     EventClaim,
@@ -15,7 +17,6 @@ from app.services.webhooks import (
     processing_ttl,
     release_event,
 )
-from conftest import FakeRedis
 
 
 def record(status):

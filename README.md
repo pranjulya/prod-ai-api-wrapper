@@ -4,7 +4,7 @@
 
 **Enterprise-grade FastAPI proxy and resilience ingress layer for the OpenAI Responses API**
 
-[![CI](https://github.com/pranjulyabajpai/prod-api-wrapper/actions/workflows/ci.yml/badge.svg)](https://github.com/pranjulyabajpai/prod-api-wrapper/actions)
+[![CI](https://github.com/pranjulya/prod-ai-api-wrapper/actions/workflows/ci.yml/badge.svg)](https://github.com/pranjulya/prod-ai-api-wrapper/actions)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Redis 7](https://img.shields.io/badge/Redis-7.0+-DC382D.svg?logo=redis&logoColor=white)](https://redis.io)
@@ -128,8 +128,8 @@ Start the API Gateway and Redis 7 with a single command:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/pranjulyabajpai/prod-api-wrapper.git
-cd prod-api-wrapper
+git clone https://github.com/pranjulya/prod-ai-api-wrapper.git
+cd prod-ai-api-wrapper
 
 # 2. Configure environment variables
 cp .env.example .env

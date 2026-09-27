@@ -18,8 +18,8 @@ This project is built with production-grade engineering standards: strict typed 
 
 1. Fork and clone the repository:
    ```bash
-   git clone https://github.com/your-username/prod-api-wrapper.git
-   cd prod-api-wrapper
+   git clone https://github.com/your-username/prod-ai-api-wrapper.git
+   cd prod-ai-api-wrapper
    ```
 
 2. Create virtual environment and install dependencies:

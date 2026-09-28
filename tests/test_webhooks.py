@@ -161,6 +161,7 @@ def test_missing_signature_is_rejected_by_the_real_sdk():
         b"x" * (MAX_WEBHOOK_BODY_BYTES + 1),
         iter((b"x" * (MAX_WEBHOOK_BODY_BYTES // 2), b"y" * (MAX_WEBHOOK_BODY_BYTES // 2 + 1))),
     ],
+    ids=["single-body", "streamed-chunks"],
 )
 def test_oversized_webhook_body_is_rejected_before_verification(
     monkeypatch, captured_events, content

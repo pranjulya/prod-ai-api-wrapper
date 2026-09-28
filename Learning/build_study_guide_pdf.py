@@ -1251,17 +1251,17 @@ Internal app polls GET /v1/responses/{job_id}"""
     out.extend(
         bullets(
             [
-                "Rich structured JSON logs with named events (today: a simple line in correlation middleware).",
-                "Docker / Docker Compose for API + Redis.",
-                "A full root README and a portfolio demo script.",
+                "A recorded portfolio demonstration script (sync, background, polling, idempotent retry).",
+                "Per-client API keys instead of one shared wrapper key.",
+                "Richer named-event log coverage beyond the correlation middleware baseline (structured JSON logs already ship).",
             ]
         )
     )
     out.append(
         callout(
-            "If asked “what would you add next?” say: structured logs with event names and correlation "
-            "IDs, Docker Compose for local Redis + API, and per-client keys instead of one shared "
-            "wrapper key."
+            "If asked “what would you add next?” say: a portfolio demo recording, per-client keys "
+            "instead of one shared wrapper key, and richer named-event log coverage. Docker Compose "
+            "and a root README already ship."
         )
     )
 

@@ -6,6 +6,8 @@ Security is a core design pillar of this production API wrapper. If you believe 
 
 Instead, please report security vulnerabilities responsibly by emailing the maintainer or opening a private GitHub Security Advisory.
 
+> **Note:** Private vulnerability reporting on this GitHub repository is proposed to be enabled in a later settings pass (Stage C). Until then, email the maintainer. Do not open a public issue for security reports.
+
 Please include:
 - A description of the vulnerability.
 - Steps to reproduce or proof-of-concept.

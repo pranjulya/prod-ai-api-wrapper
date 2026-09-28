@@ -188,8 +188,8 @@ curl -X POST http://localhost:8000/v1/responses \
 **Response (`200 OK`):**
 ```json
 {
-  "id": "wrp_resp_01J6A8Z9...",
-  "openai_response_id": "resp_01J6A8...",
+  "id": "wrp_resp_4acabae0-14a7-4af3-903f-03ed2d2096a4",
+  "openai_response_id": "resp_abc123",
   "status": "completed",
   "model": "gpt-5-mini",
   "output_text": "Event-driven architectures decouple services, enabling independent scaling and enhanced resilience. They improve real-time responsiveness by processing events asynchronously across distributed nodes.",
@@ -221,11 +221,11 @@ curl -X POST http://localhost:8000/v1/responses/background \
 **Response (`202 Accepted`):**
 ```json
 {
-  "id": "job_01J6B9X7Y8Z9...",
+  "id": "job_9542a3f5-4844-4ea1-bda6-bcf7a92da2ed",
   "status": "pending",
   "created_at": "2026-09-02T12:00:00Z",
   "expires_at": "2026-09-03T12:00:00Z",
-  "status_url": "/v1/responses/job_01J6B9X7Y8Z9...",
+  "status_url": "/v1/responses/job_9542a3f5-4844-4ea1-bda6-bcf7a92da2ed",
   "correlation_id": "corr-generated-uuid"
 }
 ```
@@ -236,7 +236,7 @@ curl -X POST http://localhost:8000/v1/responses/background \
 `GET /v1/responses/{job_id}`
 
 ```bash
-curl -X GET http://localhost:8000/v1/responses/job_01J6B9X7Y8Z9... \
+curl -X GET http://localhost:8000/v1/responses/job_9542a3f5-4844-4ea1-bda6-bcf7a92da2ed \
   -H "Authorization: Bearer test-wrapper-key"
 ```
 
@@ -294,7 +294,7 @@ All settings are configured via environment variables and strictly validated at 
 | `OPENAI_WEBHOOK_SECRET` | String | *Required* | HMAC secret used to verify OpenAI webhook signatures |
 | `WRAPPER_API_KEY` | String | *Required* | Bearer token required for internal callers |
 | `REDIS_URL` | String | *Required* | Redis connection URL (`redis://...` or `rediss://...`) |
-| `OPENAI_ALLOWED_MODELS`| CSV | `gpt-5-mini` | Comma-separated allowlist of permitted models |
+| `OPENAI_ALLOWED_MODELS`| CSV | *Required* | Comma-separated allowlist of permitted models (startup fails if unset) |
 | `OPENAI_DEFAULT_MODEL` | String | `gpt-5-mini` | Default model when not specified in client payload |
 | `OPENAI_TIMEOUT_SECONDS`| Int | `30` | Maximum timeout before terminating upstream requests |
 | `RATE_LIMIT_REQUESTS` | Int | `60` | Max requests allowed within the rate limit window |
@@ -343,14 +343,18 @@ Explore the documentation guides inside the [`Learning/`](Learning/) directory:
 
 ## 🛠️ Developer Tooling & Makefile
 
+All Makefile targets invoke [`uv`](https://github.com/astral-sh/uv). Install `uv` first (`curl -LsSf https://astral.sh/uv/install.sh | sh`, or see the uv docs).
+
 ```bash
 make help         # View all available developer commands
+make install      # Sync dependencies with uv
 make test         # Execute test suite
 make lint         # Run ruff code linter
 make format       # Auto-format codebase with ruff
 make run          # Start local API with live reloading
 make docker-up    # Build & launch container stack
 make docker-down  # Stop and tear down containers
+make clean        # Remove caches / build artifacts
 ```
 
 ---

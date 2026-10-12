@@ -93,13 +93,15 @@ The wrapper sends only these fields to OpenAI. It never accepts client-supplied 
 ```json
 {
   "id": "job_01H...",
-  "status": "pending",
+  "status": "in_progress",
   "created_at": "2026-08-07T10:00:00Z",
   "expires_at": "2026-08-08T10:00:00Z",
   "status_url": "/v1/responses/job_01H...",
   "correlation_id": "request-123"
 }
 ```
+
+The creation response reports `in_progress` because the wrapper submits the response to OpenAI, and stores the provider response ID, before it replies. `pending` is an internal pre-submission state that clients do not observe through this endpoint, and the provider response ID is never exposed.
 
 `GET /v1/responses/{job_id}` returns `202 Accepted` for `pending` or `in_progress`, `200 OK` for `completed`, `404 Not Found` after expiry or for an unknown job, and `200 OK` with a terminal `failed`, `cancelled`, or `incomplete` status for other completed work.
 

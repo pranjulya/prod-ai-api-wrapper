@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Scaffold an Agent Context Pack into a target repository.
+"""Scaffold an Agent Context Pack into any target repository.
 
 Usage:
-    python scripts/init_context_pack.py /path/to/target-repo [--name "Project Name"]
+    uv run python scripts/init_context_pack.py /path/to/target-repo [--name "Project Name"] [--dry-run]
 
-This creates:
-    - AGENTS.md (root entry point with discovered source modules)
+This creates/configures:
+    - AGENTS.md (root entry point with discovered source modules and conventions)
     - CLAUDE.md and GEMINI.md (@AGENTS.md import stubs)
-    - docs/architecture.md (flows, invariants, state models)
+    - docs/architecture.md (migrates existing root architecture.md if present, or creates template)
     - docs/requirements.md (requirements register R1..Rn + change protocol)
     - docs/decisions.md (architectural decision index)
-    - scripts/check_docs.py (drift lint checker)
+    - scripts/check_docs.py (tailored drift lint checker)
 """
 
 import argparse
+import datetime
+import subprocess
 import sys
 from pathlib import Path
 
@@ -24,7 +26,7 @@ Entry point for AI agents and new contributors. Read this first; open other file
 ## Identity
 
 - **Project:** {name}
-- Single source root `{src_dir}/`.
+- Source directories: {src_summary}
 - Coordination, tests, and configuration details go here.
 
 ## Working Rule
@@ -77,7 +79,7 @@ Key packages, functions, and cross-module boundaries.
 
 | ID | Invariant | Enforced in |
 |---|---|---|
-| I1 | Core system guarantee | `{src_dir}/` |
+| I1 | Core system guarantee | `{primary_dir}` |
 
 ## 4. State & Data Models
 
@@ -96,7 +98,7 @@ This file tracks **behavior obligations** and the **formal change protocol**.
 
 | ID | Requirement | Source of Truth | Tests | Status |
 |---|---|---|---|---|
-| R1 | Core system requirement | `{src_dir}/` | `tests/` | done |
+| R1 | Core system requirement | `{primary_dir}` | `tests/` | done |
 
 ## Out of Scope
 
@@ -122,93 +124,172 @@ Decisions recorded here represent binding constraints. Full ADRs (`docs/adr/NNNN
 | Initial Architecture | Accepted | Project inception | Baseline architecture |
 """
 
+IGNORE_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    "__pycache__",
+    "dist",
+    "build",
+    "node_modules",
+    "tests",
+    "scripts",
+    "docs",
+    "assets",
+    "artifacts",
+}
 
-def find_source_modules(target: Path, src_dir: str) -> list[str]:
-    src_path = target / src_dir
-    if not src_path.is_dir():
-        return []
+
+def get_git_sha(target: Path) -> str:
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(target), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    except OSError:
+        pass
+    return "initial"
+
+
+def find_source_modules(target: Path) -> list[str]:
     modules = []
-    for p in src_path.rglob("*.py"):
-        if p.name == "__init__.py" or "__pycache__" in p.parts:
+    for p in target.rglob("*.py"):
+        rel_parts = p.relative_to(target).parts
+        if any(ignored in rel_parts for ignored in IGNORE_DIRS):
+            continue
+        if p.name == "__init__.py":
             continue
         modules.append(p.relative_to(target).as_posix())
     return sorted(modules)
 
 
-def scaffold(target: Path, name: str | None = None) -> None:
+def scaffold(target: Path, name: str | None = None, dry_run: bool = False) -> None:
     target = target.resolve()
     if not target.is_dir():
         print(f"Error: Target directory does not exist: {target}")
         sys.exit(1)
 
     proj_name = name or target.name
-    src_dir = "app" if (target / "app").is_dir() else ("src" if (target / "src").is_dir() else target.name)
+    modules = find_source_modules(target)
 
-    modules = find_source_modules(target, src_dir)
+    # Determine primary source directories
+    top_dirs = sorted({m.split("/")[0] for m in modules if "/" in m})
+    src_summary = ", ".join(f"`{d}/`" for d in top_dirs) if top_dirs else "`src/`"
+    primary_dir = top_dirs[0] if top_dirs else "src"
+
     if modules:
         module_rows = "\n".join(f"| `{m}` | Module responsibility |" for m in modules)
     else:
-        module_rows = f"| `{src_dir}/main.py` | Application entry point |"
+        module_rows = f"| `{primary_dir}/main.py` | Application entry point |"
+
+    sha = get_git_sha(target)
+    today = datetime.date.today().isoformat()
+
+    actions = []
 
     # 1. AGENTS.md
     agents_file = target / "AGENTS.md"
     if not agents_file.exists():
-        agents_file.write_text(
-            AGENTS_TEMPLATE.format(name=proj_name, src_dir=src_dir, module_rows=module_rows),
-            encoding="utf-8",
+        content = AGENTS_TEMPLATE.format(
+            name=proj_name,
+            src_summary=src_summary,
+            module_rows=module_rows,
         )
-        print("Created AGENTS.md")
+        actions.append(("create", agents_file, content))
+    else:
+        actions.append(("skip", agents_file, "already exists"))
 
     # 2. CLAUDE.md & GEMINI.md
     for stub in ("CLAUDE.md", "GEMINI.md"):
         f = target / stub
         if not f.exists():
-            f.write_text("@AGENTS.md\n", encoding="utf-8")
-            print(f"Created {stub}")
+            actions.append(("create", f, "@AGENTS.md\n"))
+        else:
+            actions.append(("skip", f, "already exists"))
 
     # 3. docs directory
     docs_dir = target / "docs"
-    docs_dir.mkdir(exist_ok=True)
-
     arch_file = docs_dir / "architecture.md"
+    root_arch = target / "architecture.md"
+
     if not arch_file.exists():
-        arch_file.write_text(
-            ARCHITECTURE_TEMPLATE.format(sha="initial", date="initial", src_dir=src_dir),
-            encoding="utf-8",
-        )
-        print("Created docs/architecture.md")
+        if root_arch.exists():
+            # Migrate existing root architecture.md
+            existing_content = root_arch.read_text(encoding="utf-8")
+            header = f"> Verified against `{sha}` ({today}).\n\n"
+            content = f"# Architecture\n\n{header}{existing_content}"
+            actions.append(("create_from_root_arch", arch_file, content))
+        else:
+            content = ARCHITECTURE_TEMPLATE.format(
+                sha=sha,
+                date=today,
+                primary_dir=primary_dir,
+            )
+            actions.append(("create", arch_file, content))
+    else:
+        actions.append(("skip", arch_file, "already exists"))
 
     req_file = docs_dir / "requirements.md"
     if not req_file.exists():
-        req_file.write_text(
-            REQUIREMENTS_TEMPLATE.format(src_dir=src_dir),
-            encoding="utf-8",
+        actions.append(
+            ("create", req_file, REQUIREMENTS_TEMPLATE.format(primary_dir=primary_dir))
         )
-        print("Created docs/requirements.md")
+    else:
+        actions.append(("skip", req_file, "already exists"))
 
     dec_file = docs_dir / "decisions.md"
     if not dec_file.exists():
-        dec_file.write_text(DECISIONS_TEMPLATE, encoding="utf-8")
-        print("Created docs/decisions.md")
+        actions.append(("create", dec_file, DECISIONS_TEMPLATE))
+    else:
+        actions.append(("skip", dec_file, "already exists"))
 
     # 4. scripts/check_docs.py
     scripts_dir = target / "scripts"
-    scripts_dir.mkdir(exist_ok=True)
     checker_dest = scripts_dir / "check_docs.py"
     checker_src = Path(__file__).resolve().parent / "check_docs.py"
     if not checker_dest.exists() and checker_src.exists():
-        checker_dest.write_text(checker_src.read_text(encoding="utf-8"), encoding="utf-8")
-        print("Copied scripts/check_docs.py")
+        actions.append(("copy", checker_dest, checker_src.read_text(encoding="utf-8")))
+    elif checker_dest.exists():
+        actions.append(("skip", checker_dest, "already exists"))
 
-    print(f"\nSuccessfully scaffolded Agent Context Pack in: {target}")
+    # Execute or print
+    print(f"\n--- Scaffolding Plan for: {target.name} ({target}) ---")
+    for action, path, data in actions:
+        rel_path = path.relative_to(target)
+        if action == "skip":
+            print(f"  [SKIP]   {rel_path} ({data})")
+        elif action in ("create", "create_from_root_arch", "copy"):
+            flag = "[MIGRATE]" if action == "create_from_root_arch" else "[CREATE]"
+            print(f"  {flag} {rel_path}")
+            if not dry_run:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(data, encoding="utf-8")
+
+    if dry_run:
+        print("\nDry run completed. No files were written.")
+    else:
+        print(f"\nSuccessfully initialized Agent Context Pack in {target}!")
+        print("Next steps:")
+        print("  1. Review AGENTS.md module responsibilities")
+        print("  2. Run: python scripts/check_docs.py")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Scaffold Agent Context Pack")
     parser.add_argument("target", type=Path, help="Target repository root path")
     parser.add_argument("--name", type=str, default=None, help="Project name")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without writing files"
+    )
     args = parser.parse_args()
-    scaffold(args.target, args.name)
+    scaffold(args.target, args.name, args.dry_run)
 
 
 if __name__ == "__main__":

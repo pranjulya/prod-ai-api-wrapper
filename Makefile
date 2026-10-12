@@ -1,4 +1,4 @@
-.PHONY: help install test lint format run docker-up docker-down clean
+.PHONY: help install test lint format run docker-up docker-down clean docs-check
 
 help:
 	@echo "Available commands:"
@@ -6,6 +6,7 @@ help:
 	@echo "  make test        Run full automated test suite"
 	@echo "  make lint        Run ruff linter"
 	@echo "  make format      Format code with ruff"
+	@echo "  make docs-check  Verify documentation consistency with code"
 	@echo "  make run         Start local FastAPI development server"
 	@echo "  make docker-up   Build and start containers via Docker Compose"
 	@echo "  make docker-down Stop running containers"
@@ -18,7 +19,10 @@ test:
 	uv run pytest -v
 
 lint:
-	uv run ruff check app tests
+	uv run ruff check app tests scripts
+
+docs-check:
+	uv run python scripts/check_docs.py
 
 format:
 	uv run ruff format app tests

@@ -46,6 +46,10 @@ jobs:
         run: |
           uv run ruff check app tests scripts
 
+      - name: Check Documentation Consistency
+        run: |
+          uv run python scripts/check_docs.py
+
       - name: Run Test Suite
         env:
           OPENAI_API_KEY: ci-openai-key

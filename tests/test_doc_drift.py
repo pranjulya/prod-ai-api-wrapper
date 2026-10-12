@@ -98,3 +98,7 @@ def test_main_reports_failures_for_missing_docs(tmp_path, capsys):
     assert check_docs.main(tmp_path) == 1
     out = capsys.readouterr().out
     assert "AGENTS.md: file is missing" in out
+
+
+def test_real_tree_docs_agree_with_code():
+    assert check_docs.main(ROOT) == 0

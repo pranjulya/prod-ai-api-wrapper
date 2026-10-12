@@ -222,13 +222,17 @@ curl -X POST http://localhost:8000/v1/responses/background \
 ```json
 {
   "id": "job_9542a3f5-4844-4ea1-bda6-bcf7a92da2ed",
-  "status": "pending",
+  "status": "in_progress",
   "created_at": "2026-09-02T12:00:00Z",
   "expires_at": "2026-09-03T12:00:00Z",
   "status_url": "/v1/responses/job_9542a3f5-4844-4ea1-bda6-bcf7a92da2ed",
   "correlation_id": "corr-generated-uuid"
 }
 ```
+
+The wrapper submits the work to OpenAI before responding, so a freshly created job reports
+`in_progress` rather than `pending`. `pending` remains an internal pre-submission state that
+client responses do not observe, and the provider response ID is never exposed.
 
 ---
 

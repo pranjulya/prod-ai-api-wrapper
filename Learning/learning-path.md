@@ -24,7 +24,7 @@ working service.
     timeouts and provider errors into stable wrapper errors.
 11. **Idempotency (complete)** — make client retries safe from duplicate billable work with Redis claims and replay.
 12. **Background creation (complete)** — create durable Redis jobs and return `202` while OpenAI processes them.
-13. **Job status (complete)** — let clients poll Redis-backed job state safely without calling OpenAI.
+13. **Job status (complete)** — let clients poll Redis-backed job state, with OpenAI retrieval as a cooldown-limited recovery path when a non-terminal job has not received its webhook update.
 14. **Webhooks (complete)** — verify OpenAI events, deduplicate delivery in
     Redis, and update terminal jobs exactly once.
 15. **Observability (complete)** — emit safe structured application and Uvicorn

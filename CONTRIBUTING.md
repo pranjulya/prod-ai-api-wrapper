@@ -34,6 +34,13 @@ This project is built with production-grade engineering standards: strict typed 
    cp .env.example .env
    ```
 
+### Orientation & Architecture Maps
+
+- **Start with [`AGENTS.md`](AGENTS.md):** Quick map of modules, invariants, and verify ladder.
+- **Requirement changes:** Follow the formal change protocol in [`docs/requirements.md`](docs/requirements.md).
+- **Architecture updates:** Update [`docs/architecture.md`](docs/architecture.md) in the same commit as any code change affecting flows or invariants.
+- **Verify docs:** Run `make docs-check` before submitting PRs.
+
 ---
 
 ## Quality Standards

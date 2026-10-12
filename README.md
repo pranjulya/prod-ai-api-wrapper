@@ -366,6 +366,17 @@ Explore the documentation guides inside the [`Learning/`](Learning/) directory:
 
 ---
 
+## 🗺️ Architecture & Context Maps (AI Agents & Contributors)
+
+For AI coding agents and human contributors, structured context is maintained in dedicated entry points:
+
+* [**`AGENTS.md`**](AGENTS.md): Machine-readable system identity, module ownership map, non-obvious conventions, and verification ladder.
+* [**Architecture Map**](docs/architecture.md): Request flows, state models, invariants, Redis key schema, Lua script inventory, and error handling matrix.
+* [**Requirements Register**](docs/requirements.md): Explicit requirement inventory ($R1..R23$), out-of-scope boundaries, and formal change protocol.
+* [**Decisions Index**](docs/decisions.md): Consolidated index of architectural trade-offs linking to historical specs in [`docs/superpowers/specs/`](docs/superpowers/specs/).
+
+---
+
 ## 🛠️ Developer Tooling & Makefile
 
 All Makefile targets invoke [`uv`](https://github.com/astral-sh/uv). Install `uv` first (`curl -LsSf https://astral.sh/uv/install.sh | sh`, or see the uv docs).

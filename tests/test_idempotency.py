@@ -86,3 +86,30 @@ def test_timeout_keeps_claim_so_retry_does_not_call_provider_again(monkeypatch):
     assert second.status_code == 409
     assert second.json()["error"]["code"] == "idempotency_in_progress"
     assert client.responses.calls == 3
+
+
+def test_incomplete_response_is_not_cached_so_retry_calls_provider_again(monkeypatch):
+    class IncompleteThenCompleted:
+        def __init__(self):
+            self.calls = 0
+
+        async def create(self, **kwargs):
+            self.calls += 1
+            status = "incomplete" if self.calls == 1 else "completed"
+            return SimpleNamespace(id="resp-id", status=status, model=kwargs["model"], output_text="", usage=None)
+
+    class FakeIncompleteOpenAI:
+        def __init__(self):
+            self.responses = IncompleteThenCompleted()
+
+        async def close(self):
+            pass
+
+    client = FakeIncompleteOpenAI()
+    monkeypatch.setattr("app.main.create_openai_client", lambda settings: client)
+    with TestClient(create_app()) as http:
+        first = http.post("/v1/responses", headers=headers(), json={"input": "Hi"})
+        second = http.post("/v1/responses", headers=headers(), json={"input": "Hi"})
+    assert first.json()["status"] == "incomplete"
+    assert second.json()["status"] == "completed"
+    assert client.responses.calls == 2

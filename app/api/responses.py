@@ -183,7 +183,12 @@ async def create_response(payload: ResponsesRequest, request: Request, idempoten
     request.state.openai_request_id = openai_request_id(response)
     normalized = normalize_response(response, request.state.correlation_id)
     try:
-        await store(request.app.state.redis, key=key, request_hash_value=fingerprint, response=normalized, ttl_seconds=request.app.state.settings.idempotency_ttl_seconds)
+        if str(normalized.status) == "completed":
+            await store(request.app.state.redis, key=key, request_hash_value=fingerprint, response=normalized, ttl_seconds=request.app.state.settings.idempotency_ttl_seconds)
+        else:
+            # Non-completed results (e.g. "incomplete" from an exhausted token budget) are not
+            # replayed; release the key so the client can retry with adjusted parameters.
+            await delete(request.app.state.redis, key)
     except RedisError:
         _log_redis_failure("create")
     return normalized

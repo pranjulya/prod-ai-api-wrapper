@@ -288,3 +288,16 @@ def test_prefixed_dynamic_route_uses_full_route_template(captured_events):
     completed = event(captured_events, "request_completed")[-1]
     assert response.status_code == 404
     assert completed["route"] == "/v1/responses/{job_id}"
+
+
+def test_uvicorn_server_record_exposes_only_exception_class_name():
+    try:
+        raise RuntimeError("exception-secret")
+    except RuntimeError:
+        import sys
+
+        exc_info = sys.exc_info()
+    record = logging.LogRecord("uvicorn.error", logging.ERROR, __file__, 1, "boom", (), exc_info)
+    payload = decode(record)
+    assert payload["error_type"] == "RuntimeError"
+    assert "exception-secret" not in json.dumps(payload)

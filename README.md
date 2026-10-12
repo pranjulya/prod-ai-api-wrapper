@@ -202,6 +202,9 @@ curl -X POST http://localhost:8000/v1/responses \
 }
 ```
 
+> [!NOTE]
+> **Reasoning models & token budgets:** `gpt-5-mini` spends part of `max_output_tokens` on hidden reasoning. A small budget (e.g. `200`) can return `"status": "incomplete"` with an empty `output_text`. Use a larger budget (`1000+`). `incomplete` responses are **not** stored for idempotent replay, so retrying with the same `Idempotency-Key` re-runs the request.
+
 ---
 
 ### 2. Asynchronous Background Generation

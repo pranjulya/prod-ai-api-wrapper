@@ -44,7 +44,7 @@ jobs:
 
       - name: Run Ruff Linter
         run: |
-          uv run ruff check app tests
+          uv run ruff check app tests scripts
 
       - name: Run Test Suite
         env:

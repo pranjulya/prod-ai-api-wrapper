@@ -148,8 +148,8 @@ The gateway will be live on `http://localhost:8000`.
 **Requirements:** Python 3.12+ and Redis 7 running locally on port 6379.
 
 ```bash
-# 1. Start Redis
-docker run -d --name redis -p 6379:6379 redis:7-alpine
+# 1. Start Redis (bound to localhost — Redis 7 has no auth by default)
+docker run -d --name redis -p 127.0.0.1:6379:6379 redis:7-alpine
 
 # 2. Setup Virtual Environment
 python3.12 -m venv .venv

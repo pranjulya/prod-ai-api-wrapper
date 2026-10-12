@@ -336,7 +336,7 @@ Only two endpoints can ever spend money:
 When running against a live key, keep the spend bounded:
 
 * Pin `OPENAI_ALLOWED_MODELS` to a single low-cost model. Any other model is rejected with `400 unsupported_model` before a provider call is made.
-* Set `RATE_LIMIT_REQUESTS=2` with `RATE_LIMIT_WINDOW_SECONDS=60` to impose a hard ceiling that is enforced in Redis and shared across every worker.
+* Set `RATE_LIMIT_REQUESTS` with care. It bounds *request volume*, not spend, and the free checks count against it too. The smoke script issues 6 authenticated requests against a 60-second window (only 2 of them billable), so a value below 6 will `429` the replay, conflict, background-creation, and polling checks. `10` leaves headroom for one smoke run plus a few manual calls.
 * Send a small `max_output_tokens` value and a one-word prompt.
 * Use a dedicated OpenAI project key with its own budget limit, then revoke it. This is the only guardrail that still holds if the application behaves unexpectedly.
 

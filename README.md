@@ -320,6 +320,28 @@ pytest -v --tb=short
 ./scripts/smoke_test.py --url http://localhost:8000 --key test-wrapper-key
 ```
 
+### Cost Safety
+
+`pytest` never contacts OpenAI, so it is always free to run. The smoke script is different: against a live wrapper it issues exactly **two billable `create` calls** (the synchronous and background creation paths). Everything else it checks — the idempotent replay, the `409` conflict, and job polling — is free.
+
+Only two endpoints can ever spend money:
+
+| Operation | Endpoint | Billable |
+| :--- | :--- | :---: |
+| Create a response | `POST /v1/responses` | Yes |
+| Create a background response | `POST /v1/responses/background` | Yes |
+| Read a job | `GET /v1/responses/{job_id}` | No — `retrieve` only |
+| Receive a webhook | `POST /webhooks/openai` | No — `retrieve` only |
+
+When running against a live key, keep the spend bounded:
+
+* Pin `OPENAI_ALLOWED_MODELS` to a single low-cost model. Any other model is rejected with `400 unsupported_model` before a provider call is made.
+* Set `RATE_LIMIT_REQUESTS=2` with `RATE_LIMIT_WINDOW_SECONDS=60` to impose a hard ceiling that is enforced in Redis and shared across every worker.
+* Send a small `max_output_tokens` value and a one-word prompt.
+* Use a dedicated OpenAI project key with its own budget limit, then revoke it. This is the only guardrail that still holds if the application behaves unexpectedly.
+
+Retries are bounded at two retries (three attempts), and the SDK's own retry loop is disabled with `max_retries=0`, so exactly one retry mechanism is active. Note that the retry engine treats timeouts as transient, so a request that completed upstream but timed out locally can be billed twice; idempotency protects against client retries, not against that internal retry.
+
 ### Test Coverage Highlights
 * **Authentication & Ingress Security (`test_authentication.py`):** Bearer token validation, empty/malformed headers, timing attacks.
 * **Rate Limiting Engine (`test_rate_limiting.py`, `test_rate_limit_service.py`):** Concurrency tests, window boundary transitions, Redis atomic pipelines.

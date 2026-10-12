@@ -148,8 +148,8 @@ The gateway will be live on `http://localhost:8000`.
 **Requirements:** Python 3.12+ and Redis 7 running locally on port 6379.
 
 ```bash
-# 1. Start Redis
-docker run -d --name redis -p 6379:6379 redis:7-alpine
+# 1. Start Redis (bound to localhost — Redis 7 has no auth by default)
+docker run -d --name redis -p 127.0.0.1:6379:6379 redis:7-alpine
 
 # 2. Setup Virtual Environment
 python3.12 -m venv .venv
@@ -323,6 +323,28 @@ pytest -v --tb=short
 # Run smoke test script against running instance
 ./scripts/smoke_test.py --url http://localhost:8000 --key test-wrapper-key
 ```
+
+### Cost Safety
+
+`pytest` never contacts OpenAI, so it is always free to run. The smoke script is different: against a live wrapper it issues exactly **two billable `create` calls** (the synchronous and background creation paths). Everything else it checks — the idempotent replay, the `409` conflict, and job polling — is free.
+
+Only two endpoints can ever spend money:
+
+| Operation | Endpoint | Billable |
+| :--- | :--- | :---: |
+| Create a response | `POST /v1/responses` | Yes |
+| Create a background response | `POST /v1/responses/background` | Yes |
+| Read a job | `GET /v1/responses/{job_id}` | No — `retrieve` only |
+| Receive a webhook | `POST /webhooks/openai` | No — `retrieve` only |
+
+When running against a live key, keep the spend bounded:
+
+* Pin `OPENAI_ALLOWED_MODELS` to a single low-cost model. Any other model is rejected with `400 unsupported_model` before a provider call is made.
+* Set `RATE_LIMIT_REQUESTS` with care. It bounds *request volume*, not spend, and the free checks count against it too. The smoke script issues 6 authenticated requests against a 60-second window (only 2 of them billable), so a value below 6 will `429` the replay, conflict, background-creation, and polling checks. `10` leaves headroom for one smoke run plus a few manual calls.
+* Send a small `max_output_tokens` value and a one-word prompt.
+* Use a dedicated OpenAI project key with its own budget limit, then revoke it. This is the only guardrail that still holds if the application behaves unexpectedly.
+
+Retries are bounded at two retries (three attempts), and the SDK's own retry loop is disabled with `max_retries=0`, so exactly one retry mechanism is active. Note that the retry engine treats timeouts as transient, so a request that completed upstream but timed out locally can be billed twice; idempotency protects against client retries, not against that internal retry.
 
 ### Test Coverage Highlights
 * **Authentication & Ingress Security (`test_authentication.py`):** Bearer token validation, empty/malformed headers, timing attacks.

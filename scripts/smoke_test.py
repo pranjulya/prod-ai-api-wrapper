@@ -8,12 +8,16 @@ Exercises the core endpoints of a running wrapper instance to verify:
 - Rate limit headers & handling
 - Synchronous completions with idempotency
 - Background job submission & polling status
+
+Cost warning: against a live wrapper this script triggers exactly two billable
+OpenAI calls (the synchronous and background creation paths). The idempotent
+replay, the 409 conflict check, and job polling are free. See the "Cost Safety"
+section of the README before running it against a real OpenAI key.
 """
 
 import argparse
 import os
 import sys
-import time
 import uuid
 
 try:

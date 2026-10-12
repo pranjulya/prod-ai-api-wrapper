@@ -21,6 +21,7 @@ ALLOWED_FIELDS = frozenset(
         "operation",
         "retry_after",
         "webhook_type",
+        "error_type",
     }
 )
 _correlation_id = contextvars.ContextVar("correlation_id", default=None)
@@ -73,6 +74,10 @@ class JsonFormatter(logging.Formatter):
                 )
             elif record.name in {"uvicorn", "uvicorn.error"}:
                 payload.update(event="uvicorn_server", message="Uvicorn server record.")
+                exc_info = record.exc_info
+                if isinstance(exc_info, tuple) and exc_info[0] is not None:
+                    # Only the exception class name is emitted; messages/tracebacks may hold secrets.
+                    payload["error_type"] = exc_info[0].__name__
             elif getattr(record, "_wrapper_application_event", None) is _APPLICATION_EVENT_MARKER:
                 event = getattr(record, "event", None)
                 if not isinstance(event, str) or not event:

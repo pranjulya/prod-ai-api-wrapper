@@ -9,3 +9,12 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+
+# Local tools & study artifacts
+.commandcode/
+MISSION.md
+NOTES.md
+RESOURCES.md
+assets/
+lessons/
+reference/
